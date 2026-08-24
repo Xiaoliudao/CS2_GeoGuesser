@@ -1,0 +1,44 @@
+import { z } from "zod";
+import { CLIENT_EVENTS } from "./protocol";
+import { MAP_IDS, isLayerForMap } from "./maps";
+
+export const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{5}$/;
+
+export const nicknameSchema = z.string().trim().min(2).max(20);
+export const roomCodeSchema = z.string().trim().toUpperCase().regex(ROOM_CODE_PATTERN);
+
+export const clientEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal(CLIENT_EVENTS.JOIN),
+    payload: z.object({
+      playerId: z.string().uuid(),
+      nickname: nicknameSchema,
+    }),
+  }),
+  z.object({ type: z.literal(CLIENT_EVENTS.READY) }),
+  z.object({
+    type: z.literal(CLIENT_EVENTS.GUESS_SUBMIT),
+    payload: z.object({
+      round: z.number().int().positive(),
+      eventId: z.string().uuid(),
+      mapId: z.enum(MAP_IDS),
+      layerId: z.enum(["main", "upper", "lower"]),
+      point: z.object({
+        x: z.number().finite().min(0).max(1),
+        y: z.number().finite().min(0).max(1),
+      }),
+    }),
+  }).superRefine((event, context) => {
+    if (!isLayerForMap(event.payload.mapId, event.payload.layerId)) {
+      context.addIssue({ code: "custom", path: ["payload", "layerId"], message: "Layer is not valid for the selected map." });
+    }
+  }),
+  z.object({ type: z.literal(CLIENT_EVENTS.SYNC) }),
+  z.object({
+    type: z.literal(CLIENT_EVENTS.PING),
+    payload: z.object({ sentAt: z.number().optional() }).optional(),
+  }),
+  z.object({ type: z.literal(CLIENT_EVENTS.PLAY_AGAIN) }),
+]);
+
+export type ParsedClientEvent = z.infer<typeof clientEventSchema>;

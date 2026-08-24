@@ -1,0 +1,38 @@
+{
+  "name": "cs2-map-guesser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest",
+    "smoke:e2e": "node scripts/e2e-smoke.mjs",
+    "radar:extract": "tsx scripts/content/radar-extract.ts",
+    "question:import": "tsx scripts/content/question-import.ts",
+    "assets:upload": "tsx scripts/content/assets-upload.ts"
+  },
+  "dependencies": {
+    "react": "latest",
+    "react-dom": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "latest",
+    "@cloudflare/workers-types": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/node": "latest",
+    "@vitejs/plugin-react": "latest",
+    "sharp": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}
