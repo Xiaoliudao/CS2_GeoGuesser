@@ -54,14 +54,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Ensure R2 bucket exists
-        shell: bash
-        run: |
-          if npx wrangler r2 bucket info cs2-map-guesser-assets >/dev/null 2>&1; then
-            echo "R2 bucket is ready."
-          else
-            npx wrangler r2 bucket create cs2-map-guesser-assets
-          fi
-
       - name: Deploy Worker
         run: npx wrangler deploy
