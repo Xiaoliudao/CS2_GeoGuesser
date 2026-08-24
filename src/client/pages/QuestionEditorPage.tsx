@@ -1,7 +1,22 @@
 import { useMemo, useState } from "react";
+import questionManifest from "../../../content/question-manifest.json";
 import { getMap, isLayerForMap, type MapId, type RadarLayerId } from "../../shared/maps";
+import type { ViewAngle, WorldPosition } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import { RadarPicker } from "../components/RadarPicker";
+
+interface QaQuestion {
+  id: string;
+  imageAssetId: string;
+  correctMapId: MapId;
+  correctLayerId: RadarLayerId;
+  correctPoint: MapPoint;
+  worldPosition: WorldPosition;
+  viewAngle?: ViewAngle;
+  coordinateSource: "world-conversion" | "manual-override";
+}
+
+const importedQuestions = questionManifest as readonly QaQuestion[];
 
 function finitePoint(params: URLSearchParams): MapPoint | null {
   const x = Number(params.get("x"));
@@ -11,30 +26,48 @@ function finitePoint(params: URLSearchParams): MapPoint | null {
 
 export function QuestionEditorPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const initialQuestionId = params.get("question") ?? importedQuestions[0]?.id ?? "";
+  const [selectedQuestionId, setSelectedQuestionId] = useState(initialQuestionId);
+  const selectedQuestion = importedQuestions.find((question) => question.id === selectedQuestionId);
   const requestedMap = params.get("map") as MapId | null;
-  const mapId: MapId = requestedMap && ["mirage", "inferno", "ancient", "nuke", "anubis", "dust2", "train", "overpass"].includes(requestedMap)
+  const fallbackMap: MapId = requestedMap && ["mirage", "inferno", "ancient", "nuke", "anubis", "dust2", "train", "overpass"].includes(requestedMap)
     ? requestedMap
     : "mirage";
+  const mapId = selectedQuestion?.correctMapId ?? fallbackMap;
   const requestedLayer = params.get("layer") ?? getMap(mapId).layers[0].id;
-  const layerId: RadarLayerId = isLayerForMap(mapId, requestedLayer) ? requestedLayer : getMap(mapId).layers[0].id;
-  const automaticPoint = useMemo(() => finitePoint(params), [params]);
+  const fallbackLayer: RadarLayerId = isLayerForMap(mapId, requestedLayer) ? requestedLayer : getMap(mapId).layers[0].id;
+  const layerId = selectedQuestion?.correctLayerId ?? fallbackLayer;
+  const automaticPoint = selectedQuestion?.correctPoint ?? finitePoint(params);
   const [overridePoint, setOverridePoint] = useState<MapPoint | null>(null);
   const point = overridePoint ?? automaticPoint;
-  const imageUrl = params.get("image") ?? "";
+  const imageUrl = selectedQuestion ? `/media/questions/${selectedQuestion.imageAssetId}` : params.get("image") ?? "";
   const verification = {
+    questionId: selectedQuestion?.id ?? "query-preview",
     correctMapId: mapId,
     correctLayerId: layerId,
     automaticPoint,
     manualOverride: overridePoint,
-    worldPosition: params.get("world") ?? "not provided",
-    source: overridePoint ? "manual-override" : "world-conversion",
+    worldPosition: selectedQuestion?.worldPosition ?? params.get("world") ?? "not provided",
+    viewAngle: selectedQuestion?.viewAngle ?? "not provided",
+    coordinateSource: overridePoint ? "manual-override" : selectedQuestion?.coordinateSource ?? "world-conversion",
   };
 
   return (
     <main className="editor-page">
-      <header><span>DEVELOPMENT QA TOOL</span><h1>QUESTION VERIFICATION</h1><p>Verify the point calculated from the captured CS2 world position. Manual placement is recorded as an override.</p></header>
+      <header><span>DEVELOPMENT QA TOOL</span><h1>QUESTION VERIFICATION</h1><p>Compare each real screenshot with its synchronized radar, automatic point, source coordinates, and view angle.</p></header>
       <div className="editor-layout">
         <section className="editor-controls">
+          <label htmlFor="question-select">IMPORTED QUESTION</label>
+          <select
+            id="question-select"
+            value={selectedQuestionId}
+            onChange={(event) => { setSelectedQuestionId(event.target.value); setOverridePoint(null); }}
+            disabled={importedQuestions.length === 0}
+          >
+            {importedQuestions.length === 0
+              ? <option value="">NO IMPORTED QUESTIONS</option>
+              : importedQuestions.map((question) => <option key={question.id} value={question.id}>{question.id} · {question.correctMapId}</option>)}
+          </select>
           <label>MAP / LAYER</label>
           <strong>{getMap(mapId).name} · {layerId.toUpperCase()}</strong>
           <label>CONVERSION</label>
@@ -43,7 +76,7 @@ export function QuestionEditorPage() {
         </section>
         <section className="editor-radar"><RadarPicker mapId={mapId} layerId={layerId} value={point} onChange={setOverridePoint} /></section>
         <section className="editor-preview">
-          {imageUrl ? <img src={imageUrl} alt="Real captured question preview" /> : <div className="content-empty-state"><strong>NO CAPTURE LOADED</strong><span>Open the verification URL printed by question:import.</span></div>}
+          {imageUrl ? <img src={imageUrl} alt="Real captured question preview" /> : <div className="content-empty-state"><strong>NO CAPTURE LOADED</strong><span>Import a question or open the verification URL printed by the importer.</span></div>}
         </section>
       </div>
     </main>

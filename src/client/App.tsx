@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { HomePage } from "./pages/HomePage";
 import { RoomPage } from "./pages/RoomPage";
-import { QuestionEditorPage } from "./pages/QuestionEditorPage";
+
+const DevQuestionEditorPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/QuestionEditorPage").then((module) => ({ default: module.QuestionEditorPage })))
+  : null;
 
 function currentPath(): string {
   return window.location.pathname;
@@ -22,7 +25,9 @@ export function App() {
   }, []);
 
   const roomMatch = path.match(/^\/room\/([A-HJ-NP-Z2-9]{5})\/?$/i);
-  if (import.meta.env.DEV && path === "/dev/question-editor") return <QuestionEditorPage />;
+  if (DevQuestionEditorPage && path === "/dev/question-editor") {
+    return <Suspense fallback={null}><DevQuestionEditorPage /></Suspense>;
+  }
   if (roomMatch) return <RoomPage roomCode={roomMatch[1].toUpperCase()} />;
   return <HomePage />;
 }

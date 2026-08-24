@@ -1,3 +1,314 @@
 {
-  "maps": {}
+  "provider": "github-extracted",
+  "providerUrl": "https://github.com/MurkyYT/cs2-map-icons",
+  "sourceBuildId": "github-index:94042f894a9252ae",
+  "syncedAt": "2026-08-24T17:19:06.958Z",
+  "artifacts": [
+    {
+      "mapId": "mirage",
+      "layerId": "main",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_mirage_radar_psd.png",
+      "sourceSha256": "5de1cc16362e538dc5f4561a24661cb1fb1c15c77ec289e32b44c0fc07bfb85b",
+      "outputSha256": "b76b2817111ba25de7477eaddc29719fded75dda3552a297e4d26ad124bee390",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "inferno",
+      "layerId": "main",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_inferno_radar_psd.png",
+      "sourceSha256": "e4929829f8475d2edcb44ee3537ffad094dc8008b4d6f5aa81e66e77ddb077ba",
+      "outputSha256": "f629f7a6f5eb74048a211b147a8f77237887077cb99dfa5b9ff55962b0a5c717",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "ancient",
+      "layerId": "main",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_ancient_radar_psd.png",
+      "sourceSha256": "88fe108f7cc54d89b9c6179155cc39f419aa02f79df1a3f36031049577fd1952",
+      "outputSha256": "d582071523e377a476419a34e76300fbbee3507f91c21d096db7d67db17582e9",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "nuke",
+      "layerId": "upper",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_nuke_radar_psd.png",
+      "sourceSha256": "6230346d3ce969006062fbd02220b083245f621ef366ce26a42dc27a80120bd0",
+      "outputSha256": "6f6be0fecf2029000e777d0a055ca9c3580d04a7854e142b8f53834251cf9bc4",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "nuke",
+      "layerId": "lower",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_nuke_lower_radar_psd.png",
+      "sourceSha256": "040c958f141d0365ca9125388bc20228b0df0ac6abd1fe78d743ecfa1be4bb64",
+      "outputSha256": "c71f3302fd53b2808ca4fca5b7291c870afad002be1efc10f5349dadb6ca6bb0",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "anubis",
+      "layerId": "main",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_anubis_radar_psd.png",
+      "sourceSha256": "7c9badbb4ecb655d3d789724ca9d615bb06abf721d776176018ee3263a8a7b94",
+      "outputSha256": "debeef9b31b9f66574cb13d913675ab4347566844f18fc2258ee0a0f1ede7dc8",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "dust2",
+      "layerId": "main",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_dust2_radar_psd.png",
+      "sourceSha256": "3be20317d1383da6f390a5bb245cabb65857ef08b1e2c5b82b5938a8cb3167bb",
+      "outputSha256": "bde9874dfbbe1e7572ce92adad0d807d2413947ea816b52f805db8001df3b0a2",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "train",
+      "layerId": "upper",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_train_radar_psd.png",
+      "sourceSha256": "26007eea00d58e722058b11b96b16e08d4b28bf5494a4df141463a7dbcb0648a",
+      "outputSha256": "66510dd7f0d021527909793393c7dc78f720cebd18a1c3e03a24979893a8dcb1",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "train",
+      "layerId": "lower",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_train_lower_radar_psd.png",
+      "sourceSha256": "c1852ca4d1f0ba7ccb426a853f57f203ab5431b32e59323b6bd5cd216d7b40ed",
+      "outputSha256": "b7faab6095ebd597c78bf5972ec5285fd546f054635fbba82c06c94f6d8e728a",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "mapId": "overpass",
+      "layerId": "main",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars/de_overpass_radar_psd.png",
+      "sourceSha256": "ab3bfff1c3cc8da47eda921511b3eb34028e24b718b85709ac080f123fd4c108",
+      "outputSha256": "1ca6acb40de88f007ee2e0981f04b82efedb6f3d8223bd59c827628d3abc7b51",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "overviews": [
+    {
+      "mapId": "mirage",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_mirage.txt",
+      "sourceSha256": "f201fd608d6ea0bd091920620a4f74e97197d26caf36f133875b58d5ba1d77fe"
+    },
+    {
+      "mapId": "inferno",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_inferno.txt",
+      "sourceSha256": "ff93b0ff1f6705ccfb4daf3b038dd88ccdf3ca776823667c19782650e94d2c54"
+    },
+    {
+      "mapId": "ancient",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_ancient.txt",
+      "sourceSha256": "f6b420a983e2702c3c0d903a901483b6bc61fcf5eef2b6fb62da485ba93eb3c1"
+    },
+    {
+      "mapId": "nuke",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_nuke.txt",
+      "sourceSha256": "877a8df76cee8e5abc4756df162790ed25c5f5dd994ed9d895a7bc3a9c3ac585"
+    },
+    {
+      "mapId": "anubis",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_anubis.txt",
+      "sourceSha256": "f83755ed8a85365923ac565d3fbd2ab1391e75d8b89cfd759da9214bf80e9fff"
+    },
+    {
+      "mapId": "dust2",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_dust2.txt",
+      "sourceSha256": "97947e99bc7930fc06dc15af3dcf942dbca5ca1c6f36119a089615fd4b383620"
+    },
+    {
+      "mapId": "train",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_train.txt",
+      "sourceSha256": "13600850d41b034d973102602e5694e6c09057390d4d37490e605f54b71b4d55"
+    },
+    {
+      "mapId": "overpass",
+      "source": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/data/radar_info/de_overpass.txt",
+      "sourceSha256": "23b44305d79a15dc9feea71528a7015d6f3612044a8367f29b20c65aec2e7897"
+    }
+  ],
+  "maps": {
+    "mirage": {
+      "mapId": "mirage",
+      "sourceName": "de_mirage",
+      "posX": -3230,
+      "posY": 1713,
+      "scale": 5,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "main",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024
+        }
+      ],
+      "extractedAt": "2026-08-24T17:18:52.985Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "inferno": {
+      "mapId": "inferno",
+      "sourceName": "de_inferno",
+      "posX": -2087,
+      "posY": 3870,
+      "scale": 4.9,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "main",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024
+        }
+      ],
+      "extractedAt": "2026-08-24T17:18:53.888Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "ancient": {
+      "mapId": "ancient",
+      "sourceName": "de_ancient",
+      "posX": -2953,
+      "posY": 2164,
+      "scale": 5,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "main",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024
+        }
+      ],
+      "extractedAt": "2026-08-24T17:18:54.641Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "nuke": {
+      "mapId": "nuke",
+      "sourceName": "de_nuke",
+      "posX": -3453,
+      "posY": 2887,
+      "scale": 7,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "upper",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024,
+          "altitudeMin": -495,
+          "altitudeMax": 10000
+        },
+        {
+          "id": "lower",
+          "sourceSectionName": "lower",
+          "radarWidth": 1024,
+          "radarHeight": 1024,
+          "altitudeMin": -10000,
+          "altitudeMax": -495
+        }
+      ],
+      "extractedAt": "2026-08-24T17:18:58.461Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "anubis": {
+      "mapId": "anubis",
+      "sourceName": "de_anubis",
+      "posX": -2796,
+      "posY": 3328,
+      "scale": 5.22,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "main",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024
+        }
+      ],
+      "extractedAt": "2026-08-24T17:19:01.212Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "dust2": {
+      "mapId": "dust2",
+      "sourceName": "de_dust2",
+      "posX": -2476,
+      "posY": 3239,
+      "scale": 4.4,
+      "rotate": 1,
+      "zoom": 1.1,
+      "layers": [
+        {
+          "id": "main",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024
+        }
+      ],
+      "extractedAt": "2026-08-24T17:19:02.275Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "train": {
+      "mapId": "train",
+      "sourceName": "de_train",
+      "posX": -2308,
+      "posY": 2078,
+      "scale": 4.082077,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "upper",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024,
+          "altitudeMin": -50,
+          "altitudeMax": 20000
+        },
+        {
+          "id": "lower",
+          "sourceSectionName": "lower",
+          "radarWidth": 1024,
+          "radarHeight": 1024,
+          "altitudeMin": -5000,
+          "altitudeMax": -50
+        }
+      ],
+      "extractedAt": "2026-08-24T17:19:04.469Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    },
+    "overpass": {
+      "mapId": "overpass",
+      "sourceName": "de_overpass",
+      "posX": -4831,
+      "posY": 1781,
+      "scale": 5.2,
+      "rotate": 0,
+      "zoom": 0,
+      "layers": [
+        {
+          "id": "main",
+          "sourceSectionName": "default",
+          "radarWidth": 1024,
+          "radarHeight": 1024
+        }
+      ],
+      "extractedAt": "2026-08-24T17:19:06.957Z",
+      "sourceBuildId": "github-index:94042f894a9252ae"
+    }
+  }
 }

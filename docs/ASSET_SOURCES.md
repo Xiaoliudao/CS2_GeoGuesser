@@ -1,22 +1,20 @@
 # 资源来源与权利记录
 
-## 生产资源
+## 雷达 provider
 
-| 类型 | 来源 | 获取方式 | 仓库存储 |
+| Provider | 来源 | 获取方式 | 记录 |
 |---|---|---|---|
-| Radar | 用户本机 Steam 安装的 Counter-Strike 2 | 官方 ValveResourceFormat `Source2Viewer-CLI` 从 `pak01_dir.vpk` 提取 | 不提交；生成 WebP 后上传 R2 |
-| Overview metadata | 同一本机 CS2 build 的 `resource/overviews` | 同上 | `content/generated/map-overviews.json`，含 build ID 与提取时间 |
-| Question screenshot | 用户本人运行 CS2 时截图 | `question:import` | 不提交；WebP 上传 R2 |
-| Question metadata | 截图同时记录的 `getpos` 输出 | 世界坐标自动换算 | Worker-only 清单；客户端不可获取原始坐标 |
+| `local-cs2`（优先） | 用户本机 Steam 安装的 Counter-Strike 2 | 官方 ValveResourceFormat `Source2Viewer-CLI` 从 `pak01_dir.vpk` 提取 | CS2 build ID、源/输出 SHA-256、尺寸、同步时间 |
+| `github-extracted`（回退） | [`MurkyYT/cs2-map-icons`](https://github.com/MurkyYT/cs2-map-icons) | 只从固定 HTTPS origin 下载仓库索引所列的 depot-extracted 雷达及原始 overview | 仓库 URL、索引哈希 build ID、每个源 URL、源/输出 SHA-256、尺寸、同步时间 |
 
-旧的手绘 SVG 雷达与 AI 生成题图已从 `public/` 删除，且有测试阻止 registry 再指回这些路径。
+两个 provider 都输出同一种 server-side registry：`content/generated/map-overviews.json`。生产客户端只通过 `/media/radars/...` 获取 R2 中的 WebP，不会在运行时连接 GitHub provider。同步器对支持的 8 张地图使用精确文件名匹配，避免误选 Ancient 等地图的旧版本变体。
 
-## 工具归属
+## 题目来源
 
-ValveResourceFormat / Source 2 Viewer 的代码为 MIT License。按项目要求注明：Powered by Source 2 Viewer. 工具只在开发者机器上运行，不随网站部署。
+题目截图只能由项目运营者在合法运行 CS2 时自行捕获，并与同一时刻的 `getposcopy_exact` 输出成对放入 `content/inbox`。源截图、大型生成 WebP 和 pending 清单都不提交 Git；生产 manifest 只在 R2 上传成功后更新。`content/imported/records.json` 仅记录文件名、SHA-256、opaque ID、地图和时间，不包含图片。
 
-Counter-Strike、Counter-Strike 2、Steam、游戏资源和商标属于 Valve Corporation。ValveResourceFormat 的开源许可证不改变所提取游戏内容的所有权；部署前由运营者确认其对素材使用和分发具有适当权限。
+## 归属
 
-## 仅用于实现验证的公开参考
+ValveResourceFormat / Source 2 Viewer 的代码采用 MIT License：Powered by Source 2 Viewer。工具只在开发或 CI 内容同步阶段运行，不随网站部署。
 
-实现坐标测试时参考了社区仓库 `MurkyYT/cs2-map-icons` 中公开的 overview 数值（Mirage `pos_x/pos_y/scale` 与 Nuke `verticalsections`）。生产构建不会下载、镜像或提供该仓库的图片；实际 metadata 必须来自本机当前 CS2 安装。
+Counter-Strike、Counter-Strike 2、Steam、游戏资源和商标属于 Valve Corporation。工具许可证或公开提取仓库不会改变游戏内容的所有权；部署运营者负责确认其对素材使用与分发拥有适当权限。

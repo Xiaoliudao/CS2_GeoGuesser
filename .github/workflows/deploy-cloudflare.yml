@@ -51,6 +51,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Sync and upload real radar assets
+        run: npm run radar:sync
+
       - name: Build
         run: npm run build
 

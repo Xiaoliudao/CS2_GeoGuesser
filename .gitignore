@@ -19,8 +19,10 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
-content/inbox/
+content/inbox/*
+!content/inbox/.gitkeep
 content/cache/
 content/generated/assets/
 content/generated/radars/
 content/generated/upload-manifest.json
+content/generated/pending-questions.json

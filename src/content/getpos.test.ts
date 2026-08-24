@@ -13,4 +13,11 @@ describe("CS2 getpos parsing", () => {
     expect(() => parsePosition("1 2")).toThrow();
     expect(() => parsePosition("1 NaN 3")).toThrow();
   });
+
+  it("parses getposcopy_exact clipboard text with whitespace, newlines, and negative decimals", () => {
+    expect(parseGetpos("  setpos_exact   -123.75   456.125  -789.5 ;\r\n  setang_exact  -8.25  179.5  0.0  ")).toEqual({
+      worldPosition: { x: -123.75, y: 456.125, z: -789.5 },
+      viewAngle: { pitch: -8.25, yaw: 179.5, roll: 0 },
+    });
+  });
 });

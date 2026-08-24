@@ -24,22 +24,22 @@ npm run smoke:e2e
 
 ## 真实内容工作流
 
-1. 安装官方 ValveResourceFormat 的 `Source2Viewer-CLI`，把可执行文件加入 `PATH`，或设置 `SOURCE2VIEWER_CLI`。
-2. 保持本机 CS2 为最新版本。脚本会从 Steam 自动寻找安装，也可设置 `CS2_PATH`。
-3. 提取 overview 元数据与雷达并转换为 WebP：
+1. 同步真实 overview 元数据与雷达并转换为 WebP：
 
 ```bash
-npm run radar:extract
-npm run assets:upload -- --radars
+npm run radar:sync
 ```
 
-4. 在自己运行的 CS2 中截图并执行 `getpos`，然后导入：
+脚本优先从本机 CS2 使用官方 ValveResourceFormat `Source2Viewer-CLI` 提取；不可用时回退到公开的 depot-extracted provider。它会保留来源 URL/build ID、原始与输出 SHA-256、尺寸和同步时间。有 Cloudflare 环境凭据时自动上传 R2，没有凭据时生成本地待上传资源。
+
+2. 在自己运行的 CS2 中截图并执行 `getposcopy_exact`，把同名截图和 `.txt` 放入 `content/inbox`，先验证后批量导入：
 
 ```bash
-npm run question:import -- --image "D:\captures\mirage-01.png" --map mirage --getpos "setpos_exact -100 200 64;setang_exact 3 90 0"
+npm run questions:import-inbox -- --dry-run
+npm run questions:import-inbox
 ```
 
-导入器先用真实 overview 的 `pos_x`、`pos_y`、`scale`、`rotate`、图片尺寸和垂直分层计算坐标，再打印仅开发环境可访问的 QA URL。只有截图上传 R2 成功后，题目才写入 Worker-only 清单。完整说明见 [题目采集指南](docs/QUESTION_CAPTURE.md) 和 [资源来源记录](docs/ASSET_SOURCES.md)。
+导入器逐项校验同名文件、地图与精确坐标，用真实 overview 的 `pos_x`、`pos_y`、`scale`、`rotate`、图片尺寸和垂直分层计算坐标，并按源图片 SHA-256 去重。只有截图上传 R2 成功后，题目才写入 Worker-only 清单；无凭据时会安全生成 pending 资产供以后重跑。完整 Windows 操作见 [题目采集指南](docs/QUESTION_CAPTURE.md) 和 [资源来源记录](docs/ASSET_SOURCES.md)。
 
 本项目使用 ValveResourceFormat / Source 2 Viewer 读取用户本机安装的 CS2 资源：Powered by Source 2 Viewer. ValveResourceFormat 源代码采用 MIT License；提取的 Valve 游戏素材仍归其权利人所有。
 
@@ -72,8 +72,9 @@ CI 可改用权限最小化的 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID
 ## 主要文件
 
 ```text
-scripts/content/radar-extract.ts       本地 VPK 提取与 WebP 转换
+scripts/content/radar-sync.ts          本机优先、公开真实提取源回退的雷达同步
 scripts/content/question-import.ts     截图、getpos、坐标、R2、清单
+scripts/content/questions-import-inbox.ts  inbox 批量验证、去重、pending/导入
 scripts/content/assets-upload.ts       SHA-256 增量 R2 上传
 src/shared/radarCoordinates.ts         world → radar 与楼层选择
 src/worker/index.ts                    R2 媒体路由

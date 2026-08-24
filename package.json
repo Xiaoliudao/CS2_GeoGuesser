@@ -12,8 +12,10 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest",
     "smoke:e2e": "node scripts/e2e-smoke.mjs",
+    "radar:sync": "tsx scripts/content/radar-sync.ts",
     "radar:extract": "tsx scripts/content/radar-extract.ts",
     "question:import": "tsx scripts/content/question-import.ts",
+    "questions:import-inbox": "tsx scripts/content/questions-import-inbox.ts",
     "assets:upload": "tsx scripts/content/assets-upload.ts"
   },
   "dependencies": {

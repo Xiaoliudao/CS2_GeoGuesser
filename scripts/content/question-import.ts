@@ -63,10 +63,10 @@ async function main() {
   if (!existsSync(imagePath)) throw new Error(`REAL SCREENSHOT NOT FOUND ${imagePath}`);
   const mapId = required(values, "--map") as MapId;
   if (!MAP_IDS.includes(mapId)) throw new Error(`Unsupported map ${mapId}.`);
-  if (!existsSync(overviewPath)) throw new Error("REAL RADAR METADATA REQUIRED. Run npm run radar:extract first.");
+  if (!existsSync(overviewPath)) throw new Error("REAL RADAR METADATA REQUIRED. Run npm run radar:sync first.");
   const overviewDocument = JSON.parse(readFileSync(overviewPath, "utf8")) as { maps?: Partial<Record<MapId, MapOverview>> };
   const overview = overviewDocument.maps?.[mapId];
-  if (!overview) throw new Error(`REAL RADAR METADATA REQUIRED for ${mapId}. Run npm run radar:extract first.`);
+  if (!overview) throw new Error(`REAL RADAR METADATA REQUIRED for ${mapId}. Run npm run radar:sync first.`);
   const capture = parseGetpos(required(values, "--getpos"));
   const automaticLayer = selectRadarLayer(capture.worldPosition, overview);
   const automaticPoint = worldToRadarPoint(capture.worldPosition, overview, automaticLayer);
