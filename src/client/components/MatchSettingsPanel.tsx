@@ -72,6 +72,8 @@ export function MatchSettingsPanel({
 }: MatchSettingsPanelProps) {
   const selectedRounds = Number(roundsInput);
   const selectedDuration = Number(durationInput);
+  const customRoundsSelected = !ROUND_PRESETS.some((rounds) => rounds === selectedRounds);
+  const customDurationSelected = !DURATION_PRESETS.some((seconds) => seconds === selectedDuration);
   const availableQuestions = availability?.availableQuestions ?? 0;
   const invalidRounds = roundsInput === "" || !Number.isInteger(selectedRounds) || selectedRounds < 1 || selectedRounds > 50;
   const invalidDuration = durationInput === "" || !Number.isInteger(selectedDuration) || selectedDuration < 10 || selectedDuration > 120;
@@ -145,7 +147,7 @@ export function MatchSettingsPanel({
             ))}
           </div>
           <label className="custom-setting-input">
-            <span>CUSTOM</span>
+            <span className={customRoundsSelected ? "is-selected" : ""}>CUSTOM</span>
             <input
               id={MATCH_SETTINGS_ROUNDS_INPUT_ID}
               type="number"
@@ -177,7 +179,7 @@ export function MatchSettingsPanel({
             ))}
           </div>
           <label className="custom-setting-input">
-            <span>CUSTOM SEC</span>
+            <span className={customDurationSelected ? "is-selected" : ""}>CUSTOM SEC</span>
             <input
               id={MATCH_SETTINGS_DURATION_INPUT_ID}
               type="number"

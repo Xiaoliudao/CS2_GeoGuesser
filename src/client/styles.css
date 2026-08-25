@@ -108,6 +108,7 @@ input:focus, select:focus { border-color: var(--orange); box-shadow: 0 0 0 2px r
 .setting-presets button.is-selected, .map-pool-grid button.is-selected { color: #fff; border-color: var(--orange); background: rgba(255,107,44,.12); box-shadow: inset 3px 0 0 var(--orange); }
 .custom-setting-input { margin: 8px 0 0; display: grid; grid-template-columns: minmax(84px, 110px) minmax(0, 1fr); align-items: center; }
 .custom-setting-input > span { min-height: 42px; display: flex; align-items: center; padding: 0 12px; color: #78858b; border: 1px solid #354249; border-right: 0; background: #11191d; font-size: 8px; font-weight: 800; letter-spacing: .13em; }
+.custom-setting-input > span.is-selected { color: #fff; border-color: var(--orange); background: rgba(255,107,44,.12); box-shadow: inset 3px 0 0 var(--orange); }
 .custom-setting-input input { min-width: 0; height: 42px; }
 .map-pool-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
 .map-pool-toolbar .setting-group-label { margin-bottom: 0; }

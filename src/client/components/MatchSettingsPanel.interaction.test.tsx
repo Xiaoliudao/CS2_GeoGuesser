@@ -80,4 +80,33 @@ describe("MatchSettingsPanel interactions", () => {
     expect(screen.getByRole("checkbox", { name: /Ancient/ }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("button", { name: "ASIA" }).classList.contains("is-selected")).toBe(true);
   });
+
+  it("moves the highlight between preset buttons and custom labels", async () => {
+    const user = userEvent.setup();
+    render(<ControlledSettings />);
+    await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
+
+    const roundsInput = screen.getByLabelText("Custom question count");
+    const durationInput = screen.getByLabelText("Custom round duration in seconds");
+    const customRounds = screen.getByText("CUSTOM");
+    const customDuration = screen.getByText("CUSTOM SEC");
+
+    await user.clear(roundsInput);
+    await user.type(roundsInput, "7");
+    await user.clear(durationInput);
+    await user.type(durationInput, "120");
+
+    expect(customRounds.classList.contains("is-selected")).toBe(true);
+    expect(customDuration.classList.contains("is-selected")).toBe(true);
+    expect(screen.getByRole("button", { name: "5" }).classList.contains("is-selected")).toBe(false);
+    expect(screen.getByRole("button", { name: "20s" }).classList.contains("is-selected")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "10" }));
+    await user.click(screen.getByRole("button", { name: "45s" }));
+
+    expect(customRounds.classList.contains("is-selected")).toBe(false);
+    expect(customDuration.classList.contains("is-selected")).toBe(false);
+    expect(screen.getByRole("button", { name: "10" }).classList.contains("is-selected")).toBe(true);
+    expect(screen.getByRole("button", { name: "45s" }).classList.contains("is-selected")).toBe(true);
+  });
 });

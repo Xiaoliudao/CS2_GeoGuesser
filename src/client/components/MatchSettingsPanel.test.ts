@@ -78,6 +78,16 @@ describe("compact match settings", () => {
     expect(expanded).toContain("10 ROUNDS · 30 SEC · 3 MAPS · ASIA");
   });
 
+  it("highlights custom labels only when values do not match a preset", () => {
+    const customMarkup = renderPanel({ expanded: true, roundsInput: "7", durationInput: "120" });
+    const presetMarkup = renderPanel({ expanded: true, roundsInput: "5", durationInput: "20" });
+
+    expect(customMarkup).toContain('<span class="is-selected">CUSTOM</span>');
+    expect(customMarkup).toContain('<span class="is-selected">CUSTOM SEC</span>');
+    expect(presetMarkup).toContain('<span class="">CUSTOM</span>');
+    expect(presetMarkup).toContain('<span class="">CUSTOM SEC</span>');
+  });
+
   it("uses the map name when exactly one map is selected", () => {
     expect(formatMatchSettingsSummary({
       roundsInput: "5",
