@@ -1,6 +1,7 @@
 import type { MapId, RadarLayerId } from "./maps";
+import type { RoomSettings } from "./roomSettings";
 
-export type RoomStatus = "waiting" | "playing" | "round_result" | "finished";
+export type RoomStatus = "waiting" | "round_preparing" | "playing" | "round_result" | "finished";
 
 export interface MapPoint {
   x: number;
@@ -17,6 +18,7 @@ export interface Player {
 
 export interface PublicPlayer extends Player {
   submitted: boolean;
+  assetReady: boolean;
 }
 
 export interface PublicQuestion {
@@ -32,7 +34,10 @@ export interface PlayerRoundResult {
   layerGuess: RadarLayerId | null;
   pointGuess: MapPoint | null;
   mapCorrect: boolean;
+  layerCorrect: boolean;
   distance: number | null;
+  mapScore: number;
+  layerScore: number;
   locationScore: number;
   timeBonus?: number;
   elapsedMs: number | null;
@@ -50,14 +55,19 @@ export interface RoundResultState {
 export interface GameRoomState {
   roomCode: string;
   status: RoomStatus;
+  settings: RoomSettings;
   players: PublicPlayer[];
   round: number;
-  totalRounds: number;
   questionCount: number;
   currentQuestion: PublicQuestion | null;
+  nextQuestion: PublicQuestion | null;
+  prepareDeadline: number | null;
+  assetPrepareAttempt: number;
   roundStartedAt: number | null;
   roundEndsAt: number | null;
   roundResult: RoundResultState | null;
+  assetOrigin: string;
+  failureCode: GameErrorCode | null;
   stateVersion: number;
 }
 
@@ -71,4 +81,13 @@ export type GameErrorCode =
   | "INVALID_MESSAGE"
   | "WEBSOCKET_DISCONNECTED"
   | "NO_QUESTIONS_AVAILABLE"
-  | "QUESTION_DATABASE_UNAVAILABLE";
+  | "QUESTION_DATABASE_UNAVAILABLE"
+  | "INVALID_ROOM_SETTINGS"
+  | "INVALID_ROUND_COUNT"
+  | "INVALID_ROUND_DURATION"
+  | "EMPTY_MAP_POOL"
+  | "INVALID_MAP_ID"
+  | "NOT_ENOUGH_QUESTIONS"
+  | "INVALID_ASSET_REPORT"
+  | "NETWORK_ASSET_FAILURE"
+  | "INVALID_SERVER_REGION";

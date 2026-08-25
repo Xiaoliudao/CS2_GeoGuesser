@@ -3,6 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import sharp from "sharp";
 import {
+  GAME_IMAGE_RESIZE_OPTIONS,
+  QUESTION_GAME_MAX_EDGE,
+  QUESTION_GAME_WEBP_QUALITY,
+} from "../../src/content/imageOptimization.ts";
+import {
   getFinalQuestionPoint,
   getPreviewQuestionStatus,
   updateQuestionOverrides,
@@ -262,7 +267,13 @@ export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePat
   const questionId = existing?.question.id ?? `q-${randomUUID().replaceAll("-", "").slice(0, 16)}`;
   const output = join(preparedQuestionsRoot, `${imageAssetId}.webp`);
   mkdirSync(dirname(output), { recursive: true });
-  if (!existsSync(output)) await sharp(resolvedSourcePath).rotate().webp({ quality: 88, effort: 6 }).toFile(output);
+  // The inbox file remains the archival original. This generated object is the
+  // bounded gameplay variant and is safe to regenerate before publication.
+  await sharp(resolvedSourcePath)
+    .rotate()
+    .resize({ width: QUESTION_GAME_MAX_EDGE, height: QUESTION_GAME_MAX_EDGE, ...GAME_IMAGE_RESIZE_OPTIONS })
+    .webp({ quality: QUESTION_GAME_WEBP_QUALITY, effort: 6 })
+    .toFile(output);
   const manualOverride = overrideEntryFor(preview, previews, loadQuestionOverrides())?.point;
   const entry: PendingQuestion = {
     sourceId: preview.previewId,

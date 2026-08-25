@@ -33,11 +33,11 @@ npm run radar:sync
 
 脚本优先从本机 CS2 使用官方 ValveResourceFormat `Source2Viewer-CLI` 提取；不可用时回退到公开的 depot-extracted provider。它会保留来源 URL/build ID、原始与输出 SHA-256、尺寸和同步时间，并把同一批真实 WebP 复制到被 Git 忽略的 `public/__dev_assets__/radars`，供本地 QA 使用。有 Cloudflare 环境凭据时自动上传 R2，没有凭据时仍可完整进行本地验证。
 
-2. 在自己运行的 CS2 中截图并执行 `getposcopy_exact`，把同名截图和 `.txt` 放入 `content/inbox`：
+2. 在自己运行的 CS2 中截图并执行 `getposcopy_exact`，把同名截图和 `.txt` 按地图放入 `content/inbox/<Map>/`：
 
 ```text
-content/inbox/mirage-01.jpg
-content/inbox/mirage-01.txt
+content/inbox/Mirage/mirage-01.jpg
+content/inbox/Mirage/mirage-01.txt
 ```
 
 3. 生成本地 QA preview：
@@ -97,7 +97,11 @@ GitHub Actions 会幂等创建该 Access application，并把 `ACCESS_AUD`、`AC
 
 协议提交 `{ mapId, layerId, point: { x, y } }`。服务端验证地图与层的组合。Nuke 和当前具有多层 overview 的 Train 使用从 `verticalsections` 提取的真实高度区间选择 `upper` / `lower`，不会用硬编码的猜测阈值。
 
-计分：地图错误 0；地图正确 200；楼层也正确时按归一化欧氏距离最多再得 800，并按 Durable Object 记录的服务端提交用时获得最多 100 时间奖励。时间奖励在 20 秒内线性降至 0，错误地图或错误楼层没有时间奖励；因此地图和距离相同时，用时更短的一方得分更高。`playing` 状态下 Durable Object 会为每个 WebSocket 生成玩家专属状态：本人提交后立即看到自己的新总分，对手只能看到该玩家进入本回合前的总分；进入 `round_result` 后才向双方同步完整分数。进行中的公开状态只包含 opaque 题目 ID 和相对媒体 URL；答案从 D1 读取后只快照在 Durable Object 私有状态中，回合结束后才公开正确地图、楼层和点。legacy manifest 不会打入 Worker 或客户端 bundle。
+每题最高 100 分：地图 10 分、楼层 5 分、位置 65 分、时间 20 分。地图错误为 0；地图正确但楼层错误只得地图分；楼层也正确后，位置按归一化欧氏距离的二次曲线衰减，时间分按 Durable Object 记录的服务端提交用时在整段回合时间内线性降至 0。因此地图和距离相同时，用时更短的一方通常会获得更高的整数时间分。所有单项分、单题总分和累计总分都统一四舍五入为非负整数，不会向协议或 UI 输出小数。`playing` 状态下 Durable Object 会为每个 WebSocket 生成玩家专属状态：本人提交后立即看到自己的新总分，对手只能看到该玩家进入本回合前的总分；进入 `round_result` 后才向双方同步完整分数。进行中的公开状态只包含 opaque 题目 ID 和相对媒体 URL；答案从 D1 读取后只快照在 Durable Object 私有状态中，回合结束后才公开正确地图、楼层和点。legacy manifest 不会打入 Worker 或客户端 bundle。
+
+创建房间时可以配置 1–50 回合、10–120 秒回合时间和自定义地图池。`RoomSettings` 是 Client、Worker 与 Durable Object 共用的唯一配置结构；Worker 创建房间时会按所选地图查询 D1 可用题数，比赛开始前 Durable Object 会再次检查并从同一地图池抽取不重复题目快照。房间创建后设置锁定，刷新、重连、休眠恢复和 Play Again 都保留原设置。
+
+网络公平性方面，每回合先进入 `round_preparing`：双方浏览器完成题图与关键 radar 的真实下载/解码后，Durable Object 才创建统一的服务端截止时间。RTT 只显示连接质量，不参与得分或延长个人时间；资源失败会有限换题，连续失败则以 `NETWORK_ASSET_FAILURE` 无送分结束。新发布题图会保留 inbox 原图作为归档，并生成最长边不超过 1440px、quality 82 的 WebP 游戏版本；radar 最长边不超过 1024px。详细限制与大陆连接说明见 [Mainland China and high-latency connectivity](docs/CHINA_CONNECTIVITY.md)。
 
 ## Cloudflare
 
@@ -107,7 +111,22 @@ GitHub Actions 会幂等创建该 Access application，并把 `ACCESS_AUD`、`AC
 - Durable Object binding `GAME_ROOM`
 - R2 binding `GAME_ASSETS`，bucket `cs2-map-guesser-assets`
 - D1 binding `QUESTIONS_DB`，database `cs2-map-guesser-db`
-- `/api/*`、`/admin/api/*`、`/ws/*`、`/media/*` Worker-first 路由
+- `/api/*`、`/admin/*`、`/ws/*`、`/media/*`、SEO 文档和非公开页面使用 Worker-first 路由；真实静态资源仍由 Asset Worker 直接返回
+- `PUBLIC_APP_ORIGIN` 配置应用公开域名；可选 `PUBLIC_ASSET_ORIGIN` 配置 R2 Custom Domain。后者为空时继续使用同源 Worker `/media/*` 代理，二者都不是 secret
+
+### SEO 与站点验证
+
+生产域名、页面标题、描述、站长验证和社交图路径统一维护在 `src/shared/siteConfig.ts`。更换自定义域名时只需修改其中的 `origin`；`canonical`、Open Graph URL、`robots.txt` 和 `sitemap.xml` 会一起更新。
+
+Google Search Console 或 Bing Webmaster Tools 给出验证值后，分别填入 `googleSiteVerification` 或 `bingSiteVerification`。空值不会生成验证标签，仓库中没有伪造 token。
+
+项目当前没有可安全复用的社交预览图，因此不会伪造截图。准备一张自有或已获授权的 1200×630 JPEG 后，将它上传为 R2 object `seo/og-image.jpg`，再把 `socialImagePath` 设为 `/seo/og-image.jpg`。Worker 已准备同路径的 R2 代理，浏览器不会接触 R2 凭据：
+
+```bash
+npx wrangler r2 object put cs2-map-guesser-assets/seo/og-image.jpg --file=/path/to/og-image.jpg --content-type=image/jpeg --remote
+```
+
+部署后可将 `${origin}/sitemap.xml` 提交给 Google Search Console 和 Bing Webmaster Tools。房间、开发工具、后台和 API 会返回 `X-Robots-Tag: noindex, nofollow`，也不会进入 sitemap。
 
 首次配置：
 

@@ -1,4 +1,5 @@
 import type { GameRoomState } from "../../shared/types";
+import { getMap } from "../../shared/maps";
 
 export function Lobby({
   room,
@@ -14,7 +15,16 @@ export function Lobby({
     <section className="stage-card lobby-card">
       <div className="stage-kicker">PRE-MATCH</div>
       <h2>WAITING ROOM</h2>
-      <p>Two players. Five locations. One winner.</p>
+      <p>Two players. {room.settings.totalRounds} locations. One winner.</p>
+      <div className="lobby-settings" aria-label="Match settings">
+        <div><span>ROUNDS</span><strong>{room.settings.totalRounds}</strong></div>
+        <div><span>ROUND TIME</span><strong>{room.settings.roundDurationSeconds} SEC</strong></div>
+        <div><span>SERVER</span><strong>{room.settings.serverRegion === "asia" ? "ASIA" : "AUTO"}</strong></div>
+        <div className="lobby-map-pool">
+          <span>MAP POOL</span>
+          <strong>{room.settings.mapPool.map((mapId) => getMap(mapId).name).join(" · ")}</strong>
+        </div>
+      </div>
       <div className="lobby-slots">
         {[0, 1].map((slot) => {
           const player = room.players[slot];
@@ -40,13 +50,19 @@ export function Lobby({
       {room.questionCount === 0 && (
         <div className="content-empty-state"><strong>NO REAL QUESTIONS AVAILABLE</strong><span>Import a real CS2 question first.</span></div>
       )}
-      {room.questionCount > 0 && (
-        <div className="content-available-state">
-          <strong>{room.questionCount} REAL QUESTION{room.questionCount === 1 ? "" : "S"} AVAILABLE</strong>
-          <span>This match will use {Math.min(5, room.questionCount)} verified round{Math.min(5, room.questionCount) === 1 ? "" : "s"}.</span>
+      {room.questionCount > 0 && room.questionCount < room.settings.totalRounds && (
+        <div className="content-empty-state">
+          <strong>NOT ENOUGH QUESTIONS</strong>
+          <span>Only {room.questionCount} questions remain for this map pool; this match requires {room.settings.totalRounds}.</span>
         </div>
       )}
-      <button className="primary-button ready-button" disabled={me?.ready || room.questionCount === 0} onClick={onReady}>
+      {room.questionCount >= room.settings.totalRounds && (
+        <div className="content-available-state">
+          <strong>{room.questionCount} REAL QUESTION{room.questionCount === 1 ? "" : "S"} AVAILABLE</strong>
+          <span>This match requires {room.settings.totalRounds} verified round{room.settings.totalRounds === 1 ? "" : "s"} from the selected maps.</span>
+        </div>
+      )}
+      <button className="primary-button ready-button" disabled={me?.ready || room.questionCount < room.settings.totalRounds} onClick={onReady}>
         {me?.ready ? "YOU'RE READY" : "READY UP"}
       </button>
       {room.players.length < 2 && <small className="waiting-note">WAITING FOR AN OPPONENT…</small>}

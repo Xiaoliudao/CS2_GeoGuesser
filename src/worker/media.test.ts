@@ -35,6 +35,7 @@ describe("R2 media routing", () => {
     expect(response.status).toBe(200);
     expect(requestedKeys).toEqual(["questions/asset.webp"]);
     expect(response.headers.get("content-type")).toBe("image/webp");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
   });
 
   it("returns 404 without touching R2 when the question id is missing from D1", async () => {

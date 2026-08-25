@@ -7,6 +7,19 @@ const DevQuestionEditorPage = import.meta.env.DEV
   : null;
 const AdminQuestionEditorPage = lazy(() => import("./pages/AdminQuestionEditorPage").then((module) => ({ default: module.AdminQuestionEditorPage })));
 
+function NotFoundPage() {
+  return (
+    <main className="not-found-page">
+      <section className="stage-card">
+        <div className="stage-kicker">404 · LOCATION UNKNOWN</div>
+        <h1>PAGE NOT FOUND</h1>
+        <p>The requested location is not part of this match.</p>
+        <button className="primary-button" type="button" onClick={() => navigate("/")}>RETURN HOME</button>
+      </section>
+    </main>
+  );
+}
+
 function currentPath(): string {
   return window.location.pathname;
 }
@@ -33,5 +46,6 @@ export function App() {
     return <Suspense fallback={null}><AdminQuestionEditorPage /></Suspense>;
   }
   if (roomMatch) return <RoomPage roomCode={roomMatch[1].toUpperCase()} />;
-  return <HomePage />;
+  if (path === "/") return <HomePage />;
+  return <NotFoundPage />;
 }

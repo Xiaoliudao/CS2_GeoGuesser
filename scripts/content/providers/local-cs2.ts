@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
+import {
+  GAME_IMAGE_RESIZE_OPTIONS,
+  RADAR_GAME_MAX_EDGE,
+  RADAR_GAME_WEBP_QUALITY,
+} from "../../../src/content/imageOptimization";
 import { parseOverview } from "../../../src/content/overviewParser";
 import type { RadarProviderResult, RadarSourceProvider } from "../../../src/content/radarProvider";
 import { resolveSource2Viewer, runSource2Viewer } from "../../../src/content/source2Viewer";
@@ -85,16 +90,21 @@ export class LocalCS2RadarProvider implements RadarSourceProvider {
         if (!metadata.width || !metadata.height || metadata.width !== metadata.height || metadata.width < 512) {
           throw new Error(`INVALID_RADAR_DIMENSIONS ${map.sourceName}/${layer.id}`);
         }
-        await image.webp({ quality: 92, effort: 6 }).toFile(target);
-        dimensions[layer.id] = { width: metadata.width, height: metadata.height };
+        await image
+          .resize({ width: RADAR_GAME_MAX_EDGE, height: RADAR_GAME_MAX_EDGE, ...GAME_IMAGE_RESIZE_OPTIONS })
+          .webp({ quality: RADAR_GAME_WEBP_QUALITY, effort: 6 })
+          .toFile(target);
+        const outputMetadata = await sharp(target).metadata();
+        if (!outputMetadata.width || !outputMetadata.height) throw new Error(`INVALID_GENERATED_RADAR ${map.sourceName}/${layer.id}`);
+        dimensions[layer.id] = { width: outputMetadata.width, height: outputMetadata.height };
         artifacts.push({
           mapId: map.id,
           layerId: layer.id,
           source: `local-vpk:${basename(sourceImage)}`,
           sourceSha256: sha256(sourceImage),
           outputSha256: sha256(target),
-          width: metadata.width,
-          height: metadata.height,
+          width: outputMetadata.width,
+          height: outputMetadata.height,
         });
       }
       maps[map.id] = parseOverview(readFileSync(overviewFile, "utf8"), map.id, map.sourceName, dimensions, installation.buildId);

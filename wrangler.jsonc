@@ -6,13 +6,24 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+	"vars": {
+		"PUBLIC_APP_ORIGIN": "https://cs2-map-guesser.457214526y.workers.dev",
+		"PUBLIC_ASSET_ORIGIN": ""
+	},
 	"assets": {
-		"not_found_handling": "single-page-application",
+		"binding": "ASSETS",
+		"not_found_handling": "none",
 		"run_worker_first": [
 			"/api/*",
-			"/admin/api/*",
 			"/ws/*",
-			"/media/*"
+			"/media/*",
+			"/room/*",
+			"/dev/*",
+			"/admin/*",
+			"/robots.txt",
+			"/sitemap.xml",
+			"/favicon.svg",
+			"/seo/*"
 		]
 	},
   "r2_buckets": [

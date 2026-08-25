@@ -95,7 +95,10 @@ class MemoryD1Database implements QuestionDatabase {
   first(query: string, values: unknown[]): unknown {
     const sql = this.normalize(query);
     if (sql.includes("COUNT(*) AS count")) {
-      return { count: this.rows.filter((row) => row.enabled === 1).length };
+      const mapValues = sql.includes("map_id IN") ? values.map(String) : null;
+      return {
+        count: this.rows.filter((row) => row.enabled === 1 && (!mapValues || mapValues.includes(row.map_id))).length,
+      };
     }
     if (sql.includes("FROM question_catalog_meta")) {
       return { version: this.version, updated_at: "2026-08-24T00:00:00.000Z" };
@@ -110,8 +113,19 @@ class MemoryD1Database implements QuestionDatabase {
 
   all(query: string, values: unknown[]): unknown[] {
     const sql = this.normalize(query);
+    if (sql.includes("GROUP BY map_id")) {
+      return values.map(String).map((mapId) => ({
+        map_id: mapId,
+        count: this.rows.filter((row) => row.enabled === 1 && row.map_id === mapId).length,
+      })).filter((row) => row.count > 0);
+    }
     if (sql.includes("ORDER BY RANDOM()")) {
-      return this.rows.filter((row) => row.enabled === 1).slice(0, Number(values[0]));
+      const usesMapPool = sql.includes("map_id IN");
+      const mapValues = usesMapPool ? values.slice(0, -1).map(String) : null;
+      const limit = Number(values.at(-1));
+      return this.rows
+        .filter((row) => row.enabled === 1 && (!mapValues || mapValues.includes(row.map_id)))
+        .slice(0, limit);
     }
     if (sql.includes("FROM questions")) return [...this.rows];
     return [];
@@ -186,11 +200,11 @@ function databaseAndRepository(): { database: MemoryD1Database; repository: Ques
   return { database, repository: new QuestionRepository(database) };
 }
 
-function question(id: string, hash: string): PublishQuestionInput {
+function question(id: string, hash: string, mapId: PublishQuestionInput["correctMapId"] = "mirage"): PublishQuestionInput {
   return {
     id,
     imageAssetKey: `questions/${id}.webp`,
-    correctMapId: "mirage",
+    correctMapId: mapId,
     correctLayerId: "main",
     correctPoint: { x: 0.4, y: 0.6 },
     automaticPoint: { x: 0.4, y: 0.6 },
@@ -245,5 +259,37 @@ describe("QuestionRepository", () => {
     expect(selected).toHaveLength(2);
     expect(new Set(selected.map((candidate) => candidate.id)).size).toBe(selected.length);
     expect(selected.map((candidate) => candidate.id)).not.toContain("q-repository0007");
+  });
+
+  it("counts availability only for the selected map pool", async () => {
+    const { repository } = databaseAndRepository();
+    for (let index = 0; index < 8; index += 1) {
+      await repository.publish(question(`q-mirage-${String(index).padStart(4, "0")}`, `mirage-${index}`, "mirage"));
+    }
+    for (let index = 0; index < 4; index += 1) {
+      await repository.publish(question(`q-inferno-${String(index).padStart(4, "0")}`, `inferno-${index}`, "inferno"));
+    }
+    for (let index = 0; index < 2; index += 1) {
+      await repository.publish(question(`q-ancient-${String(index).padStart(4, "0")}`, `ancient-${index}`, "ancient"));
+    }
+
+    await expect(repository.countEnabledForMaps(["mirage"])).resolves.toBe(8);
+    await expect(repository.countEnabledForMaps(["mirage", "inferno"])).resolves.toBe(12);
+    await expect(repository.countEnabledForMaps(["ancient"])).resolves.toBe(2);
+    await expect(repository.countEnabledByMap(["mirage", "inferno"])).resolves.toEqual({ mirage: 8, inferno: 4 });
+  });
+
+  it("selects the requested number of unique questions only from the selected maps", async () => {
+    const { repository } = databaseAndRepository();
+    for (let index = 0; index < 6; index += 1) {
+      await repository.publish(question(`q-pool-m-${String(index).padStart(4, "0")}`, `pool-m-${index}`, "mirage"));
+      await repository.publish(question(`q-pool-i-${String(index).padStart(4, "0")}`, `pool-i-${index}`, "inferno"));
+      await repository.publish(question(`q-pool-a-${String(index).padStart(4, "0")}`, `pool-a-${index}`, "ancient"));
+    }
+
+    const selected = await repository.getRandomEnabledForMaps(["mirage", "inferno"], 10);
+    expect(selected).toHaveLength(10);
+    expect(new Set(selected.map((candidate) => candidate.id)).size).toBe(10);
+    expect(selected.every((candidate) => ["mirage", "inferno"].includes(candidate.correctMapId))).toBe(true);
   });
 });

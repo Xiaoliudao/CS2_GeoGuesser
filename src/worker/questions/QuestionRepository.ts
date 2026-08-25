@@ -59,6 +59,10 @@ interface CountRow {
   count: number;
 }
 
+interface MapCountRow extends CountRow {
+  map_id: string;
+}
+
 interface CatalogMetaRow {
   version: number;
   updated_at: string;
@@ -96,6 +100,10 @@ function requireLayerId(mapId: MapId, value: string): RadarLayerId {
   const layer = getRadarLayer(mapId, value);
   if (!layer) throw new Error(`QUESTION_DATABASE_INVALID_LAYER ${mapId}/${value}`);
   return layer.id;
+}
+
+function boundPlaceholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(", ");
 }
 
 function toServerQuestion(row: QuestionRow): ServerQuestion {
@@ -148,6 +156,36 @@ export class QuestionRepository {
     return row?.count ?? 0;
   }
 
+  async countEnabledForMaps(mapPool: MapId[]): Promise<number> {
+    if (mapPool.length === 0) return 0;
+    const placeholders = boundPlaceholders(mapPool.length);
+    const row = await this.database
+      .prepare(`SELECT COUNT(*) AS count FROM questions WHERE enabled = 1 AND map_id IN (${placeholders})`)
+      .bind(...mapPool)
+      .first<CountRow>();
+    return row?.count ?? 0;
+  }
+
+  async countEnabledByMap(mapPool: MapId[]): Promise<Partial<Record<MapId, number>>> {
+    if (mapPool.length === 0) return {};
+    const placeholders = boundPlaceholders(mapPool.length);
+    const result = await this.database
+      .prepare(`
+        SELECT map_id, COUNT(*) AS count
+        FROM questions
+        WHERE enabled = 1 AND map_id IN (${placeholders})
+        GROUP BY map_id
+      `)
+      .bind(...mapPool)
+      .all<MapCountRow>();
+    const byMap: Partial<Record<MapId, number>> = Object.fromEntries(mapPool.map((mapId) => [mapId, 0]));
+    for (const row of result.results) {
+      const mapId = requireMapId(row.map_id);
+      if (mapPool.includes(mapId)) byMap[mapId] = row.count;
+    }
+    return byMap;
+  }
+
   async getCatalogMeta(): Promise<QuestionCatalogMeta> {
     const row = await this.database
       .prepare("SELECT version, updated_at FROM question_catalog_meta WHERE id = 1")
@@ -190,6 +228,23 @@ export class QuestionRepository {
     const result = await this.database
       .prepare(`SELECT ${QUESTION_COLUMNS} FROM questions WHERE enabled = 1 ORDER BY RANDOM() LIMIT ?1`)
       .bind(safeLimit)
+      .all<QuestionRow>();
+    return result.results.map(toServerQuestion);
+  }
+
+  async getRandomEnabledForMaps(mapPool: MapId[], count: number): Promise<ServerQuestion[]> {
+    const safeCount = Math.max(0, Math.floor(count));
+    if (safeCount === 0 || mapPool.length === 0) return [];
+    const placeholders = boundPlaceholders(mapPool.length);
+    const result = await this.database
+      .prepare(`
+        SELECT ${QUESTION_COLUMNS}
+        FROM questions
+        WHERE enabled = 1 AND map_id IN (${placeholders})
+        ORDER BY RANDOM()
+        LIMIT ?
+      `)
+      .bind(...mapPool, safeCount)
       .all<QuestionRow>();
     return result.results.map(toServerQuestion);
   }

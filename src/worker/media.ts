@@ -65,7 +65,7 @@ export async function questionMediaResponse(
     request,
     store,
     imageAssetKey,
-    "public, max-age=3600, s-maxage=31536000, immutable",
+    "public, max-age=31536000, immutable",
     () => Response.json(
       { error: "QUESTION_MEDIA_NOT_FOUND", questionId },
       { status: 404, headers: { "cache-control": "no-store" } },

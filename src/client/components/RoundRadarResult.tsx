@@ -1,7 +1,16 @@
 import { getMap, getRadarLayer } from "../../shared/maps";
+import { radarMediaUrl } from "../../shared/mediaUrls";
 import type { RoundResultState } from "../../shared/types";
 
-export function RoundRadarResult({ result, playerId }: { result: RoundResultState; playerId: string }) {
+export function RoundRadarResult({
+  result,
+  playerId,
+  assetOrigin = "",
+}: {
+  result: RoundResultState;
+  playerId: string;
+  assetOrigin?: string;
+}) {
   const map = getMap(result.correctMapId);
   const layer = getRadarLayer(result.correctMapId, result.correctLayerId);
   if (!layer) return null;
@@ -12,7 +21,7 @@ export function RoundRadarResult({ result, playerId }: { result: RoundResultStat
     <div className="result-radar-panel">
       <div className="radar-title"><span>CORRECT MAP · {layer.name}</span><strong>{map.name}</strong></div>
       <div className="radar-image-wrap result-radar">
-        <img src={layer.radarUrl} alt={`${map.name} ${layer.name.toLowerCase()} result radar`} draggable={false} />
+        <img src={radarMediaUrl(map.id, layer.id, assetOrigin)} alt={`${map.name} ${layer.name.toLowerCase()} result radar`} draggable={false} />
         <span
           className="radar-marker result-marker correct-point"
           style={{ left: `${result.correctPoint.x * 100}%`, top: `${result.correctPoint.y * 100}%` }}

@@ -1,11 +1,19 @@
 import { roomCodeSchema } from "../shared/schemas";
 import { getRadarLayer, MAP_IDS } from "../shared/maps";
+import {
+  CreateRoomRequestSchema,
+  QuestionAvailabilityRequestSchema,
+  roomSettingsValidationErrorCode,
+  type RoomSettings,
+  type ServerRegion,
+} from "../shared/roomSettings";
 import { authenticateAdminRequest } from "./admin/accessAuth";
 import { handleAdminRequest } from "./admin/adminQuestions";
 import { GameRoom } from "./durableObjects/GameRoom";
 import type { Env } from "./env";
 import { mediaResponse, questionMediaResponse, radarObjectKey } from "./media";
 import { QuestionRepository } from "./questions/QuestionRepository";
+import { faviconResponse, isNoIndexPath, robotsResponse, sitemapResponse, spaDocumentResponse, withNoIndex } from "./seo";
 
 const OPAQUE_QUESTION_ID = /^[A-Za-z0-9_-]{12,80}$/;
 
@@ -16,8 +24,11 @@ function generateRoomCode(): string {
   return Array.from(bytes, (byte) => ROOM_CODE_CHARACTERS[byte % ROOM_CODE_CHARACTERS.length]).join("");
 }
 
-function roomStub(env: Env, roomCode: string): DurableObjectStub<GameRoom> {
-  return env.GAME_ROOM.get(env.GAME_ROOM.idFromName(`ROOM:${roomCode}`));
+function roomStub(env: Env, roomCode: string, serverRegion: ServerRegion = "auto"): DurableObjectStub<GameRoom> {
+  const id = env.GAME_ROOM.idFromName(`ROOM:${roomCode}`);
+  return serverRegion === "asia"
+    ? env.GAME_ROOM.get(id, { locationHint: "apac" })
+    : env.GAME_ROOM.get(id);
 }
 
 function questionDatabaseUnavailable(operation: string, error: unknown): Response {
@@ -32,21 +43,89 @@ function questionDatabaseUnavailable(operation: string, error: unknown): Respons
   );
 }
 
-async function createRoom(env: Env): Promise<Response> {
+function invalidRoomSettingsResponse(error: Parameters<typeof roomSettingsValidationErrorCode>[0]): Response {
+  const code = roomSettingsValidationErrorCode(error);
+  return Response.json({ error: code }, { status: 400, headers: { "cache-control": "no-store" } });
+}
+
+async function initializeRoom(env: Env, roomCode: string, settings: RoomSettings, questionCount: number): Promise<Response> {
+  return roomStub(env, roomCode, settings.serverRegion).fetch(`https://game-room/initialize?roomCode=${roomCode}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ settings, questionCount }),
+  });
+}
+
+async function createRoom(request: Request, env: Env): Promise<Response> {
+  const body = await request.json().catch(() => null);
+  const parsed = CreateRoomRequestSchema.safeParse(body);
+  if (!parsed.success) return invalidRoomSettingsResponse(parsed.error);
+
+  let availableQuestions: number;
+  try {
+    availableQuestions = await new QuestionRepository(env.QUESTIONS_DB).countEnabledForMaps(parsed.data.settings.mapPool);
+  } catch (error) {
+    return questionDatabaseUnavailable("create-room-availability", error);
+  }
+  if (parsed.data.settings.totalRounds > availableQuestions) {
+    return Response.json(
+      {
+        error: "NOT_ENOUGH_QUESTIONS",
+        availableQuestions,
+        requestedRounds: parsed.data.settings.totalRounds,
+      },
+      { status: 409, headers: { "cache-control": "no-store" } },
+    );
+  }
+
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const roomCode = generateRoomCode();
-    const response = await roomStub(env, roomCode).fetch(`https://game-room/initialize?roomCode=${roomCode}`, {
-      method: "POST",
-    });
-    if (response.status === 201) return Response.json({ roomCode }, { status: 201 });
-    if (response.status !== 409) return new Response("Unable to create room", { status: 500 });
+    const response = await initializeRoom(env, roomCode, parsed.data.settings, availableQuestions);
+    if (response.status === 201) {
+      return Response.json({ roomCode, settings: parsed.data.settings }, { status: 201 });
+    }
+    if (response.status !== 409) return new Response(response.body, { status: response.status, headers: response.headers });
   }
   return new Response("Unable to allocate a unique room code", { status: 503 });
 }
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+async function questionAvailability(request: Request, env: Env): Promise<Response> {
+  const body = await request.json().catch(() => null);
+  const parsed = QuestionAvailabilityRequestSchema.safeParse(body);
+  if (!parsed.success) return invalidRoomSettingsResponse(parsed.error);
+  try {
+    const repository = new QuestionRepository(env.QUESTIONS_DB);
+    const [availableQuestions, byMap] = await Promise.all([
+      repository.countEnabledForMaps(parsed.data.mapPool),
+      repository.countEnabledByMap(parsed.data.mapPool),
+    ]);
+    return Response.json(
+      { availableQuestions, byMap },
+      { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } },
+    );
+  } catch (error) {
+    return questionDatabaseUnavailable("question-availability", error);
+  }
+}
+
+async function routeRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/robots.txt" && (request.method === "GET" || request.method === "HEAD")) {
+      return robotsResponse();
+    }
+
+    if (url.pathname === "/sitemap.xml" && (request.method === "GET" || request.method === "HEAD")) {
+      return sitemapResponse();
+    }
+
+    if (url.pathname === "/favicon.svg" && (request.method === "GET" || request.method === "HEAD")) {
+      return faviconResponse();
+    }
+
+    if (url.pathname === "/seo/og-image.jpg" && (request.method === "GET" || request.method === "HEAD")) {
+      return mediaResponse(request, env.GAME_ASSETS, "seo/og-image.jpg", "public, max-age=86400, s-maxage=604800");
+    }
 
     if (url.pathname.startsWith("/admin/api/")) {
       const authentication = await authenticateAdminRequest(request, env);
@@ -55,7 +134,11 @@ export default {
     }
 
     if (url.pathname === "/api/rooms" && request.method === "POST") {
-      return createRoom(env);
+      return createRoom(request, env);
+    }
+
+    if (url.pathname === "/api/questions/availability" && request.method === "POST") {
+      return questionAvailability(request, env);
     }
 
     if (url.pathname === "/api/questions/meta" && request.method === "GET") {
@@ -78,7 +161,7 @@ export default {
       if (!MAP_IDS.includes(mapId as (typeof MAP_IDS)[number]) || !getRadarLayer(mapId as (typeof MAP_IDS)[number], layerId)) {
         return new Response("Unknown radar", { status: 404 });
       }
-      return mediaResponse(request, env.GAME_ASSETS, radarObjectKey(mapId, layerId), "public, max-age=86400, s-maxage=31536000, immutable");
+      return mediaResponse(request, env.GAME_ASSETS, radarObjectKey(mapId, layerId), "public, max-age=31536000, immutable");
     }
 
     const questionMediaMatch = url.pathname.match(/^\/media\/questions\/([^/]+)$/);
@@ -117,7 +200,25 @@ export default {
       return roomStub(env, parsed.data).fetch(new Request(forwardedUrl, request));
     }
 
-    return new Response("Not found", { status: 404 });
+    const isDocumentRequest = request.method === "GET" || request.method === "HEAD";
+    const isRoomPage = /^\/room\/[A-HJ-NP-Z2-9]{5}\/?$/i.test(url.pathname);
+    const isAdminPage = /^\/admin\/question-editor\/?$/.test(url.pathname);
+    const isDevelopmentEditor = import.meta.env.DEV && /^\/dev\/question-editor\/?$/.test(url.pathname);
+    if (isDocumentRequest && (isRoomPage || isAdminPage || isDevelopmentEditor)) {
+      return spaDocumentResponse(request, env.ASSETS);
+    }
+
+    return new Response("Not found", {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=UTF-8", "X-Content-Type-Options": "nosniff" },
+    });
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const pathname = new URL(request.url).pathname;
+    const response = await routeRequest(request, env);
+    return isNoIndexPath(pathname) ? withNoIndex(response) : response;
   },
 };
 

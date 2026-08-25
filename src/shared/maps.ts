@@ -12,20 +12,20 @@ export interface MapDefinition {
 }
 
 export const MAPS = [
-  { id: "mirage", name: "Mirage", sourceName: "de_mirage", layers: [{ id: "main", name: "MAIN", radarUrl: "/media/radars/mirage/main" }] },
-  { id: "inferno", name: "Inferno", sourceName: "de_inferno", layers: [{ id: "main", name: "MAIN", radarUrl: "/media/radars/inferno/main" }] },
-  { id: "ancient", name: "Ancient", sourceName: "de_ancient", layers: [{ id: "main", name: "MAIN", radarUrl: "/media/radars/ancient/main" }] },
+  { id: "mirage", name: "Mirage", sourceName: "de_mirage", layers: [{ id: "main", name: "MAIN", radarUrl: radarMediaUrl("mirage", "main") }] },
+  { id: "inferno", name: "Inferno", sourceName: "de_inferno", layers: [{ id: "main", name: "MAIN", radarUrl: radarMediaUrl("inferno", "main") }] },
+  { id: "ancient", name: "Ancient", sourceName: "de_ancient", layers: [{ id: "main", name: "MAIN", radarUrl: radarMediaUrl("ancient", "main") }] },
   { id: "nuke", name: "Nuke", sourceName: "de_nuke", layers: [
-    { id: "upper", name: "UPPER", radarUrl: "/media/radars/nuke/upper" },
-    { id: "lower", name: "LOWER", radarUrl: "/media/radars/nuke/lower" },
+    { id: "upper", name: "UPPER", radarUrl: radarMediaUrl("nuke", "upper") },
+    { id: "lower", name: "LOWER", radarUrl: radarMediaUrl("nuke", "lower") },
   ] },
-  { id: "anubis", name: "Anubis", sourceName: "de_anubis", layers: [{ id: "main", name: "MAIN", radarUrl: "/media/radars/anubis/main" }] },
-  { id: "dust2", name: "Dust II", sourceName: "de_dust2", layers: [{ id: "main", name: "MAIN", radarUrl: "/media/radars/dust2/main" }] },
+  { id: "anubis", name: "Anubis", sourceName: "de_anubis", layers: [{ id: "main", name: "MAIN", radarUrl: radarMediaUrl("anubis", "main") }] },
+  { id: "dust2", name: "Dust II", sourceName: "de_dust2", layers: [{ id: "main", name: "MAIN", radarUrl: radarMediaUrl("dust2", "main") }] },
   { id: "train", name: "Train", sourceName: "de_train", layers: [
-    { id: "upper", name: "UPPER", radarUrl: "/media/radars/train/upper" },
-    { id: "lower", name: "LOWER", radarUrl: "/media/radars/train/lower" },
+    { id: "upper", name: "UPPER", radarUrl: radarMediaUrl("train", "upper") },
+    { id: "lower", name: "LOWER", radarUrl: radarMediaUrl("train", "lower") },
   ] },
-  { id: "overpass", name: "Overpass", sourceName: "de_overpass", layers: [{ id: "main", name: "MAIN", radarUrl: "/media/radars/overpass/main" }] },
+  { id: "overpass", name: "Overpass", sourceName: "de_overpass", layers: [{ id: "main", name: "MAIN", radarUrl: radarMediaUrl("overpass", "main") }] },
 ] as const satisfies readonly MapDefinition[];
 
 export type MapId = (typeof MAPS)[number]["id"];
@@ -43,3 +43,4 @@ export function isLayerForMap(mapId: MapId, layerId: string): layerId is RadarLa
 export function getRadarLayer(mapId: MapId, layerId: string) {
   return (getMap(mapId).layers as readonly RadarLayerDefinition[]).find((layer) => layer.id === layerId);
 }
+import { radarMediaUrl } from "./mediaUrls.ts";

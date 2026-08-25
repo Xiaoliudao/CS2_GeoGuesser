@@ -32,6 +32,6 @@ export interface VisibleScoreInput {
 }
 
 export function scoreVisibleToViewer(input: VisibleScoreInput): number {
-  if (input.status !== "playing" || input.playerId === input.viewerPlayerId) return input.totalScore;
+  if (input.status !== "playing" || input.playerId === input.viewerPlayerId) return normalizeScore(input.totalScore);
   return normalizeScore(Math.max(0, input.totalScore - input.currentRoundPoints));
 }

@@ -2,6 +2,7 @@ import type { MapId, RadarLayerId } from "../../shared/maps";
 import type { MapPoint } from "../../shared/types";
 import type { PublicQuestion } from "../../shared/types";
 import type { ViewAngle, WorldPosition } from "../../shared/radarCoordinates";
+import { questionMediaUrl } from "../../shared/mediaUrls";
 
 export interface ServerQuestion {
   id: string;
@@ -24,6 +25,9 @@ export interface LegacyManifestQuestion extends Omit<ServerQuestion, "imageAsset
 // Kept as a compatibility alias for the pure scoring module and its tests.
 export type Question = ServerQuestion;
 
-export function toPublicQuestion(question: ServerQuestion): PublicQuestion {
-  return { questionId: question.id, imageUrl: `/media/questions/${question.id}` };
+export function toPublicQuestion(question: ServerQuestion, assetOrigin = ""): PublicQuestion {
+  return {
+    questionId: question.id,
+    imageUrl: questionMediaUrl(question.id, question.imageAssetKey, assetOrigin),
+  };
 }

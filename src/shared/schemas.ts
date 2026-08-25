@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CLIENT_EVENTS } from "./protocol";
+import { ASSET_LOAD_ERROR_REASONS, CLIENT_EVENTS } from "./protocol";
 import { MAP_IDS, isLayerForMap } from "./maps";
 
 export const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{5}$/;
@@ -37,6 +37,22 @@ export const clientEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal(CLIENT_EVENTS.PING),
     payload: z.object({ sentAt: z.number().optional() }).optional(),
+  }),
+  z.object({
+    type: z.literal(CLIENT_EVENTS.ROUND_ASSET_READY),
+    payload: z.object({
+      round: z.number().int().positive(),
+      questionId: z.string().min(1).max(100),
+      loadMs: z.number().finite().int().min(0).max(120_000).optional(),
+    }).strict(),
+  }),
+  z.object({
+    type: z.literal(CLIENT_EVENTS.ROUND_ASSET_ERROR),
+    payload: z.object({
+      round: z.number().int().positive(),
+      questionId: z.string().min(1).max(100),
+      reason: z.enum(ASSET_LOAD_ERROR_REASONS),
+    }).strict(),
   }),
   z.object({ type: z.literal(CLIENT_EVENTS.PLAY_AGAIN) }),
 ]);

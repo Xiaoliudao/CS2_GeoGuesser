@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import sharp from "sharp";
+import {
+  GAME_IMAGE_RESIZE_OPTIONS,
+  RADAR_GAME_MAX_EDGE,
+  RADAR_GAME_WEBP_QUALITY,
+} from "../../../src/content/imageOptimization";
 import { MAPS, type MapId, type RadarLayerId } from "../../../src/shared/maps";
 import { parseOverview } from "../../../src/content/overviewParser";
 import type { RadarProviderResult, RadarSourceProvider } from "../../../src/content/radarProvider";
@@ -102,17 +107,22 @@ export class GitHubExtractedRadarProvider implements RadarSourceProvider {
         const targetDirectory = join(radarRoot, map.id);
         const target = join(targetDirectory, `${layer.id}.webp`);
         mkdirSync(targetDirectory, { recursive: true });
-        const output = await image.webp({ quality: 92, effort: 6 }).toBuffer();
+        const output = await image
+          .resize({ width: RADAR_GAME_MAX_EDGE, height: RADAR_GAME_MAX_EDGE, ...GAME_IMAGE_RESIZE_OPTIONS })
+          .webp({ quality: RADAR_GAME_WEBP_QUALITY, effort: 6 })
+          .toBuffer();
         writeFileSync(target, output);
-        dimensions[layer.id] = { width: metadata.width, height: metadata.height };
+        const outputMetadata = await sharp(output).metadata();
+        if (!outputMetadata.width || !outputMetadata.height) throw new Error(`INVALID_GENERATED_RADAR ${map.sourceName}/${layer.id}`);
+        dimensions[layer.id] = { width: outputMetadata.width, height: outputMetadata.height };
         artifacts.push({
           mapId: map.id,
           layerId: layer.id,
           source: sourceUrl,
           sourceSha256: sha256(sourceBytes),
           outputSha256: sha256(output),
-          width: metadata.width,
-          height: metadata.height,
+          width: outputMetadata.width,
+          height: outputMetadata.height,
         });
       }
       const overviewBytes = await download(entry.radar_info.path);

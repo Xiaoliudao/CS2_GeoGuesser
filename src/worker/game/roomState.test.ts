@@ -46,7 +46,7 @@ describe("viewer-specific score visibility", () => {
   };
 
   it("shows the submitting player their own updated total immediately", () => {
-    expect(scoreVisibleToViewer({ ...submittedPlayer, viewerPlayerId: "player-a" })).toBe(1_697.5);
+    expect(scoreVisibleToViewer({ ...submittedPlayer, viewerPlayerId: "player-a" })).toBe(1_698);
   });
 
   it("keeps the opponent and unauthenticated sockets on the pre-round total", () => {
@@ -55,7 +55,7 @@ describe("viewer-specific score visibility", () => {
   });
 
   it.each(["round_result", "finished", "waiting"] as const)("reveals the synchronized total during %s", (status) => {
-    expect(scoreVisibleToViewer({ ...submittedPlayer, status, viewerPlayerId: "player-b" })).toBe(1_697.5);
+    expect(scoreVisibleToViewer({ ...submittedPlayer, status, viewerPlayerId: "player-b" })).toBe(1_698);
   });
 
   it("leaves an opponent score unchanged before that opponent submits", () => {

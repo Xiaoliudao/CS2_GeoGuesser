@@ -1,4 +1,5 @@
 import type { GameRoomState } from "../../shared/types";
+import { formatScore, integerDisplayScore } from "../lib/formatScore";
 
 export function GameResult({
   room,
@@ -11,8 +12,21 @@ export function GameResult({
   onPlayAgain: () => void;
   onLeave: () => void;
 }) {
-  const sorted = [...room.players].sort((a, b) => b.score - a.score);
-  const tied = sorted.length === 2 && sorted[0].score === sorted[1].score;
+  if (room.failureCode === "NETWORK_ASSET_FAILURE") {
+    return (
+      <section className="stage-card final-card">
+        <div className="stage-kicker">MATCH PAUSED SAFELY</div>
+        <h2>NETWORK ASSET FAILURE</h2>
+        <p>No player received free points. Start a new attempt when both connections are stable.</p>
+        <div className="final-actions">
+          <button className="primary-button" onClick={onPlayAgain}>TRY AGAIN</button>
+          <button className="secondary-button" onClick={onLeave}>LEAVE ROOM</button>
+        </div>
+      </section>
+    );
+  }
+  const sorted = [...room.players].sort((a, b) => integerDisplayScore(b.score) - integerDisplayScore(a.score));
+  const tied = sorted.length === 2 && integerDisplayScore(sorted[0].score) === integerDisplayScore(sorted[1].score);
   const winner = sorted[0];
   return (
     <section className="stage-card final-card">
@@ -27,7 +41,7 @@ export function GameResult({
           <div key={player.id} className={index === 0 && !tied ? "winner" : ""}>
             <span>#{index + 1}</span>
             <strong>{player.nickname}{player.id === playerId && <small>YOU</small>}</strong>
-            <b>{player.score.toLocaleString()}</b>
+            <b>{formatScore(player.score)}</b>
           </div>
         ))}
       </div>

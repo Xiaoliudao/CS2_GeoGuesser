@@ -12,6 +12,7 @@ interface SocketError {
 export function useGameSocket(roomCode: string, playerId: string, nickname: string) {
   const [room, setRoom] = useState<GameRoomState | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [rttMs, setRttMs] = useState<number | null>(null);
   const [error, setError] = useState<SocketError | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -31,6 +32,8 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
 
   useEffect(() => {
     stoppedRef.current = false;
+    stateVersionRef.current = 0;
+    reconnectAttemptRef.current = 0;
 
     const connect = async () => {
       if (stoppedRef.current) return;
@@ -50,6 +53,12 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
       const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${scheme}//${window.location.host}/ws/${roomCode}`);
       socketRef.current = socket;
+      let pingTimer: number | null = null;
+
+      const ping = () => {
+        if (socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ type: "ping", payload: { sentAt: Date.now() } } satisfies ClientEvent));
+      };
 
       socket.addEventListener("open", () => {
         reconnectAttemptRef.current = 0;
@@ -59,6 +68,8 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
           JSON.stringify({ type: "player:join", payload: { playerId, nickname } } satisfies ClientEvent),
         );
         socket.send(JSON.stringify({ type: "room:sync" } satisfies ClientEvent));
+        ping();
+        pingTimer = window.setInterval(ping, 15_000);
       });
 
       socket.addEventListener("message", (message) => {
@@ -88,10 +99,15 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
           }
           return;
         }
+        if (event.type === "pong") {
+          if (event.payload.sentAt !== undefined) setRttMs(Math.max(0, Date.now() - event.payload.sentAt));
+          return;
+        }
         if (event.type === "error") setError(event.payload);
       });
 
       socket.addEventListener("close", (closeEvent) => {
+        if (pingTimer !== null) window.clearInterval(pingTimer);
         if (socketRef.current === socket) socketRef.current = null;
         if (stoppedRef.current) return;
         if (closeEvent.code === 4002 || closeEvent.code === 4003) {
@@ -99,7 +115,10 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
           return;
         }
         reconnectAttemptRef.current += 1;
-        const delay = Math.min(10_000, 1_000 * 2 ** (reconnectAttemptRef.current - 1));
+        const baseDelay = Math.min(10_000, 1_000 * 2 ** (reconnectAttemptRef.current - 1));
+        const delay = Math.round(baseDelay * (0.85 + Math.random() * 0.3));
+        setRttMs(null);
+        console.info(JSON.stringify({ event: "WEBSOCKET_RECONNECT", attempt: reconnectAttemptRef.current, delayMs: delay }));
         setConnection("reconnecting");
         reconnectTimerRef.current = window.setTimeout(() => void connect(), delay);
       });
@@ -118,5 +137,5 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
     };
   }, [nickname, playerId, roomCode]);
 
-  return { room, connection, error, clearError: () => setError(null), send };
+  return { room, connection, rttMs, error, clearError: () => setError(null), send };
 }

@@ -61,13 +61,41 @@ function assert(condition, message) {
 }
 
 function normalizeScore(points) {
-  return Math.round(points * 1_000) / 1_000;
+  return Math.max(0, Math.round(points));
 }
 
-const createResponse = await fetch(`${baseUrl}/api/rooms`, { method: "POST" });
+const availabilityResponse = await fetch(`${baseUrl}/api/questions/availability`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ mapPool: ["mirage", "inferno", "ancient", "nuke", "anubis", "dust2", "train", "overpass"] }),
+});
+assert(availabilityResponse.ok, `Expected availability 200, got ${availabilityResponse.status}`);
+const availability = await availabilityResponse.json();
+if (availability.availableQuestions === 0) {
+  console.log(JSON.stringify({ ok: true, mode: "empty-real-content", createBlocked: true }, null, 2));
+  process.exit(0);
+}
+const availableMapPool = Object.entries(availability.byMap)
+  .filter(([, count]) => count > 0)
+  .map(([mapId]) => mapId);
+const requestedSettings = {
+  totalRounds: Math.min(5, availability.availableQuestions),
+  roundDurationSeconds: 15,
+  mapPool: availableMapPool,
+  serverRegion: "auto",
+};
+const firstLayerByMap = { nuke: "upper", train: "upper" };
+const guessMapId = requestedSettings.mapPool[0];
+const guessLayerId = firstLayerByMap[guessMapId] ?? "main";
+const createResponse = await fetch(`${baseUrl}/api/rooms`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ settings: requestedSettings }),
+});
 assert(createResponse.status === 201, `Expected room creation 201, got ${createResponse.status}`);
-const { roomCode } = await createResponse.json();
+const { roomCode, settings: createdSettings } = await createResponse.json();
 assert(/^[A-HJ-NP-Z2-9]{5}$/.test(roomCode), `Invalid room code: ${roomCode}`);
+assert(JSON.stringify(createdSettings) === JSON.stringify(requestedSettings), "Create response changed RoomSettings");
 
 const existsResponse = await fetch(`${baseUrl}/api/rooms/${roomCode}`);
 assert(existsResponse.ok, "Created room was not discoverable");
@@ -83,23 +111,75 @@ try {
     bravo.waitFor((state) => state.players.length === 2),
   ]);
 
-  if (alpha.lastState.questionCount === 0) {
+  if (alpha.lastState.questionCount < alpha.lastState.settings.totalRounds) {
     assert(alpha.lastState.status === "waiting", "Empty content library did not stay in the lobby");
     alpha.send({ type: "player:ready" });
-    await alpha.waitForError("NO_QUESTIONS_AVAILABLE");
+    bravo.send({ type: "player:ready" });
+    await alpha.waitForError("NOT_ENOUGH_QUESTIONS");
     assert(alpha.lastState.status === "waiting", "Ready unexpectedly started a game with no real questions");
-    console.log(JSON.stringify({ ok: true, mode: "empty-real-content", roomCode, readyBlocked: true }, null, 2));
+    console.log(JSON.stringify({ ok: true, mode: "content-changed-after-create", roomCode, readyBlocked: true }, null, 2));
   } else {
   alpha.send({ type: "player:ready" });
   bravo.send({ type: "player:ready" });
+  let [alphaPreparing, bravoPreparing] = await Promise.all([
+    alpha.waitFor((state) => state.status === "round_preparing" && state.round === 1),
+    bravo.waitFor((state) => state.status === "round_preparing" && state.round === 1),
+  ]);
+  assert(alphaPreparing.roundStartedAt === null && alphaPreparing.roundEndsAt === null, "Timer started before asset readiness");
+  assert(alphaPreparing.prepareDeadline > Date.now(), "Prepare state has no bounded deadline");
+  const [questionAssetResponse, radarAssetResponse] = await Promise.all([
+    fetch(new URL(alphaPreparing.currentQuestion.imageUrl, baseUrl)),
+    fetch(new URL(`/media/radars/${guessMapId}/${guessLayerId}`, baseUrl)),
+  ]);
+  assert(questionAssetResponse.ok, `Question media returned ${questionAssetResponse.status}`);
+  assert(questionAssetResponse.headers.get("content-type")?.startsWith("image/"), "Question media has the wrong Content-Type");
+  assert(radarAssetResponse.ok, `Radar media returned ${radarAssetResponse.status}`);
+  assert(radarAssetResponse.headers.get("content-type")?.startsWith("image/"), "Radar media has the wrong Content-Type");
+  const preparingPayload = JSON.stringify(alphaPreparing);
+  for (const forbiddenKey of ["correctMapId", "correctLayerId", "correctPoint", "worldPosition", "viewAngle", "automaticPoint"]) {
+    assert(!preparingPayload.includes(forbiddenKey), `Prepare state leaked ${forbiddenKey}`);
+  }
+
+  activeAlpha.close();
+  activeAlpha = new TestClient("Alpha", alpha.playerId, roomCode);
+  await activeAlpha.connect();
+  alphaPreparing = await activeAlpha.waitFor((state) => state.status === "round_preparing" && state.round === 1);
+  assert(alphaPreparing.players.find((player) => player.id === alpha.playerId)?.assetReady === false, "Prepare reconnect did not resync readiness");
+
+  if (alphaPreparing.questionCount > alphaPreparing.settings.totalRounds) {
+    const failedQuestionId = alphaPreparing.currentQuestion.questionId;
+    activeAlpha.send({
+      type: "round:asset-error",
+      payload: { round: 1, questionId: failedQuestionId, reason: "NETWORK" },
+    });
+    [alphaPreparing, bravoPreparing] = await Promise.all([
+      activeAlpha.waitFor((state) => state.status === "round_preparing" && state.round === 1 && state.currentQuestion.questionId !== failedQuestionId),
+      bravo.waitFor((state) => state.status === "round_preparing" && state.round === 1 && state.currentQuestion.questionId !== failedQuestionId),
+    ]);
+    assert(alphaPreparing.assetPrepareAttempt === 1, "Asset failure did not select the first replacement question");
+    assert(alphaPreparing.roundStartedAt === null && alphaPreparing.roundEndsAt === null, "Replacement started the timer early");
+  }
+
+  activeAlpha.send({
+    type: "round:asset-ready",
+    payload: { round: 1, questionId: alphaPreparing.currentQuestion.questionId, loadMs: 2_000 },
+  });
+  const onePlayerReady = await activeAlpha.waitFor((state) => state.status === "round_preparing" && state.players.find((player) => player.id === alpha.playerId)?.assetReady);
+  assert(onePlayerReady.roundStartedAt === null && onePlayerReady.roundEndsAt === null, "One ready player started the timer");
+  bravo.send({
+    type: "round:asset-ready",
+    payload: { round: 1, questionId: bravoPreparing.currentQuestion.questionId, loadMs: 7_000 },
+  });
   const [alphaRound, bravoRound] = await Promise.all([
-    alpha.waitFor((state) => state.status === "playing"),
-    bravo.waitFor((state) => state.status === "playing"),
+    activeAlpha.waitFor((state) => state.status === "playing" && state.round === 1),
+    bravo.waitFor((state) => state.status === "playing" && state.round === 1),
   ]);
 
   let currentAlphaRound = alphaRound;
   let currentBravoRound = bravoRound;
-  const roundsToPlay = alphaRound.totalRounds;
+  assert(JSON.stringify(alphaRound.settings) === JSON.stringify(requestedSettings), "Playing state changed RoomSettings");
+  assert(alphaRound.roundEndsAt - alphaRound.roundStartedAt === requestedSettings.roundDurationSeconds * 1_000, "Round deadline ignored RoomSettings");
+  const roundsToPlay = alphaRound.settings.totalRounds;
   for (let round = 1; round <= roundsToPlay; round += 1) {
     assert(currentAlphaRound.currentQuestion.questionId === currentBravoRound.currentQuestion.questionId, `Round ${round} question IDs differ`);
     assert(currentAlphaRound.roundEndsAt === currentBravoRound.roundEndsAt, `Round ${round} deadlines differ`);
@@ -110,11 +190,20 @@ try {
       assert(!playingPayload.includes(forbiddenKey), `Playing state leaked ${forbiddenKey}`);
     }
 
+    if (round === 1) {
+      const authoritativeDeadline = currentAlphaRound.roundEndsAt;
+      activeAlpha.close();
+      activeAlpha = new TestClient("Alpha", alpha.playerId, roomCode);
+      await activeAlpha.connect();
+      const restoredPlaying = await activeAlpha.waitFor((state) => state.status === "playing" && state.round === 1);
+      assert(restoredPlaying.roundEndsAt === authoritativeDeadline, "Playing reconnect changed the authoritative deadline");
+    }
+
     const previousAlphaScore = currentAlphaRound.players.find((player) => player.id === alpha.playerId)?.score;
     assert(typeof previousAlphaScore === "number", `Round ${round} is missing Alpha's starting score`);
     activeAlpha.send({
       type: "guess:submit",
-      payload: { round, eventId: crypto.randomUUID(), mapId: "mirage", layerId: "main", point: { x: 0.2, y: 0.3 } },
+      payload: { round, eventId: crypto.randomUUID(), mapId: guessMapId, layerId: guessLayerId, point: { x: 0.2, y: 0.3 } },
     });
     const [alphaSubmittedState, bravoObservingState] = await Promise.all([
       activeAlpha.waitFor((state) => state.status === "playing" && state.round === round && state.players.some((player) => player.id === alpha.playerId && player.submitted)),
@@ -125,33 +214,45 @@ try {
     assert(alphaScoreForBravo === previousAlphaScore, `Round ${round} leaked Alpha's current-round score to Bravo`);
     bravo.send({
       type: "guess:submit",
-      payload: { round, eventId: crypto.randomUUID(), mapId: "overpass", layerId: "main", point: { x: 0.8, y: 0.7 } },
+      payload: { round, eventId: crypto.randomUUID(), mapId: guessMapId, layerId: guessLayerId, point: { x: 0.8, y: 0.7 } },
     });
     const [alphaResult] = await Promise.all([
       activeAlpha.waitFor((state) => state.status === "round_result" && state.round === round),
       bravo.waitFor((state) => state.status === "round_result" && state.round === round),
     ]);
     assert(alphaResult.roundResult?.correctMapId, "Round result did not reveal the answer");
+    assert(requestedSettings.mapPool.includes(alphaResult.roundResult.correctMapId), `Round ${round} selected a question outside the room map pool`);
     assert(alphaResult.roundResult?.correctPoint, "Round result did not reveal the correct point");
     const alphaRoundResult = alphaResult.roundResult.players.find((player) => player.playerId === alpha.playerId);
     const bravoRoundResult = alphaResult.roundResult.players.find((player) => player.playerId === bravo.playerId);
     assert(alphaRoundResult?.pointGuess?.x === 0.2 && alphaRoundResult?.pointGuess?.y === 0.3, "Player 1 point was not preserved");
     assert(bravoRoundResult?.pointGuess?.x === 0.8 && bravoRoundResult?.pointGuess?.y === 0.7, "Player 2 point was not preserved");
+    for (const playerResult of [alphaRoundResult, bravoRoundResult]) {
+      assert(
+        [playerResult.mapScore, playerResult.layerScore, playerResult.locationScore, playerResult.timeBonus, playerResult.points].every(Number.isInteger),
+        `Round ${round} exposed a fractional score`,
+      );
+    }
     const expectedAlphaScore = normalizeScore(previousAlphaScore + alphaRoundResult.points);
     assert(alphaScoreForSelf === expectedAlphaScore, `Round ${round} did not update Alpha's own score immediately`);
     assert(alphaResult.players.find((player) => player.id === alpha.playerId)?.score === expectedAlphaScore, `Round ${round} did not reveal Alpha's score after result`);
+    assert(alphaResult.players.every((player) => Number.isInteger(player.score)), `Round ${round} exposed a fractional accumulated score`);
     assert(alphaResult.players.every((player) => player.submitted), "Submission status was not synchronized");
 
-    if (round === 1) {
-      activeAlpha.close();
-      activeAlpha = new TestClient("Alpha", alpha.playerId, roomCode);
-      await activeAlpha.connect();
-      const restored = await activeAlpha.waitFor((state) => state.status === "round_result" && state.round === 1);
-      assert(restored.players.some((player) => player.id === alpha.playerId), "Reload created a different player identity");
-      assert(restored.players.length === 2, "Reload duplicated or removed a player");
-    }
-
     if (round < roundsToPlay) {
+      const [nextAlphaPreparing, nextBravoPreparing] = await Promise.all([
+        activeAlpha.waitFor((state) => state.status === "round_preparing" && state.round === round + 1),
+        bravo.waitFor((state) => state.status === "round_preparing" && state.round === round + 1),
+      ]);
+      assert(nextAlphaPreparing.roundStartedAt === null && nextAlphaPreparing.roundEndsAt === null, `Round ${round + 1} timer started during prepare`);
+      activeAlpha.send({
+        type: "round:asset-ready",
+        payload: { round: round + 1, questionId: nextAlphaPreparing.currentQuestion.questionId, loadMs: 1_000 },
+      });
+      bravo.send({
+        type: "round:asset-ready",
+        payload: { round: round + 1, questionId: nextBravoPreparing.currentQuestion.questionId, loadMs: 4_000 },
+      });
       [currentAlphaRound, currentBravoRound] = await Promise.all([
         activeAlpha.waitFor((state) => state.status === "playing" && state.round === round + 1),
         bravo.waitFor((state) => state.status === "playing" && state.round === round + 1),
@@ -161,9 +262,11 @@ try {
 
   const finalState = await activeAlpha.waitFor((state) => state.status === "finished" && state.round === roundsToPlay);
   assert(finalState.players.length === 2, "Final result is missing a player");
+  assert(finalState.players.every((player) => Number.isInteger(player.score)), "Final result exposed a fractional total score");
   activeAlpha.send({ type: "game:play-again" });
   const replayState = await activeAlpha.waitFor((state) => state.status === "waiting" && state.round === 0);
   assert(replayState.players.every((player) => player.score === 0 && !player.ready), "Play again did not reset scores and ready state");
+  assert(JSON.stringify(replayState.settings) === JSON.stringify(requestedSettings), "Play again did not preserve RoomSettings");
 
   console.log(JSON.stringify({
     ok: true,
@@ -174,8 +277,14 @@ try {
     opponentScoreHiddenUntilResult: true,
     ownScoreUpdatedImmediately: true,
     reconnectRestored: true,
+    prepareReconnectRestored: true,
+    timerWaitedForBothAssets: true,
+    assetReplacementVerified: availability.availableQuestions > requestedSettings.totalRounds,
+    realMediaRoutesVerified: true,
     gameFinished: true,
     playAgainReset: true,
+    roomSettingsPreserved: true,
+    integerScoresOnly: true,
   }, null, 2));
   }
 } finally {

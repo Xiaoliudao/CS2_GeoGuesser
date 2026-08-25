@@ -6,13 +6,16 @@ import { GameResult } from "../components/GameResult";
 import { GameScreen } from "../components/GameScreen";
 import { Lobby } from "../components/Lobby";
 import { RoundResult } from "../components/RoundResult";
+import { RoundPreparation } from "../components/RoundPreparation";
 import { useGameSocket } from "../hooks/useGameSocket";
+import { useRoundPreparation } from "../hooks/useRoundPreparation";
 import { getNickname, getPlayerId } from "../lib/identity";
 
 export function RoomPage({ roomCode }: { roomCode: string }) {
   const nickname = useMemo(getNickname, []);
   const playerId = useMemo(getPlayerId, []);
-  const { room, connection, error, clearError, send } = useGameSocket(roomCode, playerId, nickname);
+  const { room, connection, rttMs, error, clearError, send } = useGameSocket(roomCode, playerId, nickname);
+  const preparation = useRoundPreparation(room, playerId, send);
 
   useEffect(() => {
     if (!nickname) navigate("/");
@@ -37,7 +40,7 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
             COPY
           </button>
         </div>
-        <ConnectionStatus status={connection} />
+        <ConnectionStatus status={connection} rttMs={rttMs} />
       </header>
 
       {error && (
@@ -57,6 +60,15 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
 
       {room?.status === "waiting" && (
         <Lobby room={room} playerId={playerId} onReady={() => sendEvent({ type: "player:ready" })} />
+      )}
+      {room?.status === "round_preparing" && (
+        <RoundPreparation
+          room={room}
+          playerId={playerId}
+          loadState={preparation.loadState}
+          errorReason={preparation.errorReason}
+          onRetry={preparation.retry}
+        />
       )}
       {room?.status === "playing" && (
         <GameScreen room={room} playerId={playerId} onSend={sendEvent} />

@@ -3,6 +3,11 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import sharp from "sharp";
 import { parseGetpos } from "../../src/content/getpos";
+import {
+  GAME_IMAGE_RESIZE_OPTIONS,
+  QUESTION_GAME_MAX_EDGE,
+  QUESTION_GAME_WEBP_QUALITY,
+} from "../../src/content/imageOptimization";
 import { MAP_IDS, isLayerForMap, type MapId, type RadarLayerId } from "../../src/shared/maps";
 import { selectRadarLayer, worldToRadarPoint, type MapOverview, type ViewAngle, type WorldPosition } from "../../src/shared/radarCoordinates";
 import type { ManifestQuestion } from "./question-manifest";
@@ -69,7 +74,11 @@ async function main() {
   const questionId = `q-${assetId.slice(0, 12)}`;
   const output = join(projectRoot, "content", "generated", "assets", "questions", `${assetId}.webp`);
   mkdirSync(dirname(output), { recursive: true });
-  await sharp(imagePath).rotate().webp({ quality: 88, effort: 6 }).toFile(output);
+  await sharp(imagePath)
+    .rotate()
+    .resize({ width: QUESTION_GAME_MAX_EDGE, height: QUESTION_GAME_MAX_EDGE, ...GAME_IMAGE_RESIZE_OPTIONS })
+    .webp({ quality: QUESTION_GAME_WEBP_QUALITY, effort: 6 })
+    .toFile(output);
   const previewParams = new URLSearchParams({
     map: mapId, layer: layerId, x: String(automaticPoint.x), y: String(automaticPoint.y),
     world: `${capture.worldPosition.x},${capture.worldPosition.y},${capture.worldPosition.z}`,

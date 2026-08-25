@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ClientEvent } from "../../shared/protocol";
 import { getMap, type MapId, type RadarLayerId } from "../../shared/maps";
+import { radarMediaUrl } from "../../shared/mediaUrls";
 import type { MapPoint } from "../../shared/types";
 import { MapSelector } from "./MapSelector";
 import { RadarPicker } from "./RadarPicker";
@@ -8,12 +9,16 @@ import { RadarPicker } from "./RadarPicker";
 export function GuessPanel({
   questionId,
   round,
+  mapPool,
+  assetOrigin,
   submitted,
   expired,
   onSend,
 }: {
   questionId: string;
   round: number;
+  mapPool: MapId[];
+  assetOrigin: string;
   submitted: boolean;
   expired: boolean;
   onSend: (event: ClientEvent) => boolean;
@@ -50,7 +55,7 @@ export function GuessPanel({
           <div className="panel-kicker">STEP 1 · SELECT MAP</div>
           <h2>WHERE IS THIS LOCATION?</h2>
           <p>Choose the battleground, then pinpoint the exact position.</p>
-          <MapSelector onSelect={(selected) => {
+          <MapSelector mapPool={mapPool} assetOrigin={assetOrigin} onSelect={(selected) => {
             const firstLayer = getMap(selected).layers[0];
             setMapId(selected);
             setLayerId(firstLayer.id);
@@ -74,7 +79,14 @@ export function GuessPanel({
               ))}
             </div>
           )}
-          <RadarPicker mapId={mapId} layerId={layerId} value={point} onChange={setPoint} disabled={submitted || expired} />
+          <RadarPicker
+            mapId={mapId}
+            layerId={layerId}
+            radarUrl={radarMediaUrl(mapId, layerId, assetOrigin)}
+            value={point}
+            onChange={setPoint}
+            disabled={submitted || expired}
+          />
           <button className="primary-button confirm-guess" type="button" onClick={confirm} disabled={!point || submitted || expired}>
             {submitted ? "GUESS CONFIRMED ✓" : expired ? "ROUND EXPIRED" : "CONFIRM GUESS"}
           </button>

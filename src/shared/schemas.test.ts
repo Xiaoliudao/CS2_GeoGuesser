@@ -42,4 +42,26 @@ describe("normalized point validation", () => {
       payload: { ...event.payload, elapsedMs: 0, submittedAt: 0 },
     })).toEqual(event);
   });
+
+  it("accepts bounded asset readiness and safe asset errors", () => {
+    expect(clientEventSchema.safeParse({
+      type: "round:asset-ready",
+      payload: { round: 2, questionId: "q-opaque123456", loadMs: 12_000 },
+    }).success).toBe(true);
+    expect(clientEventSchema.safeParse({
+      type: "round:asset-error",
+      payload: { round: 2, questionId: "q-opaque123456", reason: "TIMEOUT" },
+    }).success).toBe(true);
+  });
+
+  it("rejects unbounded or private asset reports", () => {
+    expect(clientEventSchema.safeParse({
+      type: "round:asset-ready",
+      payload: { round: 0, questionId: "wrong", loadMs: 999_999 },
+    }).success).toBe(false);
+    expect(clientEventSchema.safeParse({
+      type: "round:asset-error",
+      payload: { round: 2, questionId: "q-opaque123456", reason: "stack trace: token=secret" },
+    }).success).toBe(false);
+  });
 });

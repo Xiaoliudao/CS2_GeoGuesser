@@ -7,6 +7,8 @@ export const CLIENT_EVENTS = {
   GUESS_SUBMIT: "guess:submit",
   SYNC: "room:sync",
   PING: "ping",
+  ROUND_ASSET_READY: "round:asset-ready",
+  ROUND_ASSET_ERROR: "round:asset-error",
   PLAY_AGAIN: "game:play-again",
 } as const;
 
@@ -15,6 +17,7 @@ export const SERVER_EVENTS = {
   PLAYER_JOINED: "player:joined",
   PLAYER_LEFT: "player:left",
   PLAYER_CONNECTION: "player:connection",
+  ROUND_PREPARE: "round:prepare",
   ROUND_START: "round:start",
   PLAYER_SUBMITTED: "player:submitted",
   ROUND_END: "round:end",
@@ -22,6 +25,9 @@ export const SERVER_EVENTS = {
   ERROR: "error",
   PONG: "pong",
 } as const;
+
+export const ASSET_LOAD_ERROR_REASONS = ["TIMEOUT", "NETWORK", "HTTP_ERROR", "DECODE_ERROR"] as const;
+export type AssetLoadErrorReason = (typeof ASSET_LOAD_ERROR_REASONS)[number];
 
 export type ClientEvent =
   | { type: "player:join"; payload: { playerId: string; nickname: string } }
@@ -32,6 +38,14 @@ export type ClientEvent =
     }
   | { type: "room:sync" }
   | { type: "ping"; payload?: { sentAt?: number } }
+  | {
+      type: "round:asset-ready";
+      payload: { round: number; questionId: string; loadMs?: number };
+    }
+  | {
+      type: "round:asset-error";
+      payload: { round: number; questionId: string; reason: AssetLoadErrorReason };
+    }
   | { type: "game:play-again" };
 
 export type ServerEvent =
@@ -41,6 +55,17 @@ export type ServerEvent =
   | {
       type: "player:connection";
       payload: { playerId: string; connected: boolean; stateVersion: number };
+    }
+  | {
+      type: "round:prepare";
+      payload: {
+        questionId: string;
+        imageUrl: string;
+        mapPool: MapId[];
+        round: number;
+        prepareDeadline: number;
+        stateVersion: number;
+      };
     }
   | {
       type: "round:start";
@@ -59,4 +84,4 @@ export type ServerEvent =
   | { type: "round:end"; payload: RoundResultState & { stateVersion: number } }
   | { type: "game:end"; payload: { state: GameRoomState } }
   | { type: "error"; payload: { code: GameErrorCode; message: string } }
-  | { type: "pong"; payload: { serverTime: number } };
+  | { type: "pong"; payload: { serverTime: number; sentAt?: number } };
