@@ -4,7 +4,13 @@ import { selectRadarProvider, type RadarProviderId } from "../../src/content/rad
 import { copyRadarPreviewAsset } from "../../src/content/questionPreviewWriter";
 import { GitHubExtractedRadarProvider } from "./providers/github-extracted";
 import { LocalCS2RadarProvider } from "./providers/local-cs2";
-import { projectRoot, publicDevAssetsRoot, radarRoot, writeRadarRegistry } from "./radar-registry";
+import {
+  projectRoot,
+  publicDevAssetsRoot,
+  radarRoot,
+  writeRadarRegistry,
+  writeRuntimeOverviewRegistry,
+} from "./radar-registry";
 
 function forcedProvider(): RadarProviderId | undefined {
   const index = process.argv.indexOf("--provider");
@@ -42,6 +48,7 @@ async function main() {
     throw new Error(`REAL_RADAR_SYNC_INCOMPLETE maps=${Object.keys(result.maps).length} artifacts=${result.artifacts.length} overviews=${result.overviews.length}`);
   }
   console.log(`WROTE ${writeRadarRegistry(result)}`);
+  console.log(`WROTE ${writeRuntimeOverviewRegistry(result)}`);
   for (const artifact of result.artifacts) {
     copyRadarPreviewAsset(join(radarRoot, artifact.mapId, `${artifact.layerId}.webp`), publicDevAssetsRoot, artifact.mapId, artifact.layerId);
   }

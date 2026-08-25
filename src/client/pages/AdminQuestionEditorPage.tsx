@@ -5,13 +5,18 @@ import type {
   AdminQuestionMutationResponse,
   AdminSession,
 } from "../../shared/adminQuestions";
+import { parseGetpos, type ParsedGetpos } from "../../content/getpos";
+import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, MAPS, type MapId, type RadarLayerId } from "../../shared/maps";
+import { selectRadarLayer, worldToRadarPoint } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import { RadarPicker } from "../components/RadarPicker";
 
 interface AdminApiErrorBody {
   error?: string;
 }
+
+type UploadAnswerMode = "manual-radar" | "world-coordinates";
 
 async function adminApi<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -57,6 +62,10 @@ export function AdminQuestionEditorPage() {
   const [uploadMapId, setUploadMapId] = useState<MapId>(MAPS[0].id);
   const [uploadLayerId, setUploadLayerId] = useState<RadarLayerId>(MAPS[0].layers[0].id);
   const [uploadPoint, setUploadPoint] = useState<MapPoint | null>(null);
+  const [uploadAnswerMode, setUploadAnswerMode] = useState<UploadAnswerMode>("manual-radar");
+  const [consoleCoordinates, setConsoleCoordinates] = useState("");
+  const [parsedCoordinates, setParsedCoordinates] = useState<ParsedGetpos | null>(null);
+  const [coordinateMessage, setCoordinateMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -99,6 +108,43 @@ export function AdminQuestionEditorPage() {
 
   function replaceQuestion(question: AdminQuestion): void {
     setQuestions((current) => current.map((candidate) => candidate.id === question.id ? question : candidate));
+  }
+
+  function resetCoordinatePreview(): void {
+    setParsedCoordinates(null);
+    setCoordinateMessage("");
+    setUploadPoint(null);
+  }
+
+  function selectUploadMap(mapId: MapId): void {
+    const map = getMap(mapId);
+    setUploadMapId(mapId);
+    setUploadLayerId(map.layers[0].id);
+    resetCoordinatePreview();
+  }
+
+  function selectAnswerMode(mode: UploadAnswerMode): void {
+    setUploadAnswerMode(mode);
+    resetCoordinatePreview();
+  }
+
+  function applyConsoleCoordinates(): void {
+    try {
+      const parsed = parseGetpos(consoleCoordinates);
+      const overview = getMapOverview(uploadMapId);
+      const layer = selectRadarLayer(parsed.worldPosition, overview);
+      const layerDefinition = getMap(uploadMapId).layers.find((candidate) => candidate.id === layer.id);
+      if (!layerDefinition) throw new Error("COORDINATE_LAYER_UNAVAILABLE");
+      const point = worldToRadarPoint(parsed.worldPosition, overview, layer);
+      setUploadLayerId(layerDefinition.id);
+      setUploadPoint(point);
+      setParsedCoordinates(parsed);
+      setCoordinateMessage(`COORDINATES APPLIED · ${layerDefinition.name} · ${formatPoint(point)}`);
+    } catch {
+      setParsedCoordinates(null);
+      setUploadPoint(null);
+      setCoordinateMessage("INVALID COORDINATES FOR THE SELECTED MAP");
+    }
   }
 
   async function savePoint(): Promise<void> {
@@ -144,16 +190,20 @@ export function AdminQuestionEditorPage() {
 
   async function uploadQuestion(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (!uploadFile || !uploadPoint) return;
+    if (!uploadFile || !uploadPoint || (uploadAnswerMode === "world-coordinates" && !parsedCoordinates)) return;
     setBusy(true);
     setMessage("");
     const form = new FormData();
     form.set("image", uploadFile);
     form.set("mapId", uploadMapId);
-    form.set("layerId", uploadLayer.id);
-    form.set("correctX", String(uploadPoint.x));
-    form.set("correctY", String(uploadPoint.y));
-    form.set("coordinateSource", "manual-override");
+    form.set("answerMode", uploadAnswerMode);
+    if (uploadAnswerMode === "world-coordinates") {
+      form.set("consoleCoordinates", consoleCoordinates);
+    } else {
+      form.set("layerId", uploadLayer.id);
+      form.set("correctX", String(uploadPoint.x));
+      form.set("correctY", String(uploadPoint.y));
+    }
     form.set("enabled", "true");
     try {
       const data = await adminApi<AdminQuestionMutationResponse>("/admin/api/questions", {
@@ -165,6 +215,9 @@ export function AdminQuestionEditorPage() {
       setSelectedId(data.question.id);
       setUploadFile(null);
       setUploadPoint(null);
+      setParsedCoordinates(null);
+      setConsoleCoordinates("");
+      setCoordinateMessage("");
       setMessage(`QUESTION ${data.question.id} UPLOADED AND ENABLED`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -195,24 +248,71 @@ export function AdminQuestionEditorPage() {
       </section>
 
       <form className="admin-upload" onSubmit={(event) => void uploadQuestion(event)}>
-        <header><span>NEW LIVE QUESTION</span><h2>UPLOAD SCREENSHOT</h2><p>Choose a real JPEG, PNG, or WebP (maximum 12 MB), then click the radar to set the answer.</p></header>
+        <header><span>NEW LIVE QUESTION</span><h2>UPLOAD SCREENSHOT</h2><p>Choose a real JPEG, PNG, or WebP (maximum 12 MB), then click the radar or paste CS2 console coordinates.</p></header>
+        <fieldset className="admin-answer-mode">
+          <legend>ANSWER INPUT</legend>
+          <label className={uploadAnswerMode === "manual-radar" ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name="upload-answer-mode"
+              checked={uploadAnswerMode === "manual-radar"}
+              onChange={() => selectAnswerMode("manual-radar")}
+            />
+            <span><strong>CLICK RADAR</strong><small>Choose the answer manually.</small></span>
+          </label>
+          <label className={uploadAnswerMode === "world-coordinates" ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name="upload-answer-mode"
+              checked={uploadAnswerMode === "world-coordinates"}
+              onChange={() => selectAnswerMode("world-coordinates")}
+            />
+            <span><strong>PASTE CS2 COORDINATES</strong><small>Convert setpos_exact automatically.</small></span>
+          </label>
+        </fieldset>
         <div className="admin-upload-fields">
           <label>QUESTION SCREENSHOT<input type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} /></label>
-          <label>MAP<select value={uploadMapId} onChange={(event) => {
-            const mapId = event.target.value as MapId;
-            const map = getMap(mapId);
-            setUploadMapId(mapId);
-            setUploadLayerId(map.layers[0].id);
-            setUploadPoint(null);
-          }}>{MAPS.map((map) => <option key={map.id} value={map.id}>{map.name}</option>)}</select></label>
-          <label>LAYER<select value={uploadLayer.id} onChange={(event) => { setUploadLayerId(event.target.value as RadarLayerId); setUploadPoint(null); }}>{selectedMap.layers.map((layer) => <option key={layer.id} value={layer.id}>{layer.name}</option>)}</select></label>
-          <div className="admin-upload-point"><span>ANSWER POINT</span><strong>{uploadPoint ? formatPoint(uploadPoint) : "CLICK RADAR"}</strong></div>
+          <label>MAP<select value={uploadMapId} onChange={(event) => selectUploadMap(event.target.value as MapId)}>{MAPS.map((map) => <option key={map.id} value={map.id}>{map.name}</option>)}</select></label>
+          <label>{uploadAnswerMode === "world-coordinates" ? "LAYER (AUTO)" : "LAYER"}<select disabled={uploadAnswerMode === "world-coordinates"} value={uploadLayer.id} onChange={(event) => { setUploadLayerId(event.target.value as RadarLayerId); setUploadPoint(null); }}>{selectedMap.layers.map((layer) => <option key={layer.id} value={layer.id}>{layer.name}</option>)}</select></label>
+          <div className="admin-upload-point"><span>ANSWER POINT</span><strong>{uploadPoint ? formatPoint(uploadPoint) : uploadAnswerMode === "world-coordinates" ? "APPLY COORDINATES" : "CLICK RADAR"}</strong></div>
         </div>
+        {uploadAnswerMode === "world-coordinates" && <section className="admin-coordinate-panel">
+          <label>CS2 CONSOLE COORDINATES
+            <textarea
+              value={consoleCoordinates}
+              onChange={(event) => {
+                setConsoleCoordinates(event.target.value);
+                resetCoordinatePreview();
+              }}
+              placeholder="setpos_exact -2331.545654 -477.949829 -63.248474; setang_exact -13.700989 -145.679047 0.000000"
+              rows={3}
+              maxLength={2048}
+            />
+          </label>
+          <div className="admin-coordinate-actions">
+            <button type="button" className="secondary-button" disabled={busy || consoleCoordinates.trim().length === 0} onClick={applyConsoleCoordinates}>APPLY COORDINATES</button>
+            <span className={parsedCoordinates ? "is-valid" : coordinateMessage ? "is-error" : ""}>{coordinateMessage || "Paste setpos_exact; setang_exact from the CS2 console."}</span>
+          </div>
+          {parsedCoordinates && <pre>{JSON.stringify({
+            worldPosition: parsedCoordinates.worldPosition,
+            viewAngle: parsedCoordinates.viewAngle ?? null,
+            layerId: uploadLayer.id,
+            automaticPoint: uploadPoint,
+          }, null, 2)}</pre>}
+        </section>}
         <div className="admin-upload-workspace">
           <div className="admin-image-preview">{uploadPreviewUrl ? <img src={uploadPreviewUrl} alt="Screenshot selected for upload" /> : <span>SELECT A REAL SCREENSHOT</span>}</div>
-          <RadarPicker mapId={uploadMapId} layerId={uploadLayer.id} value={uploadPoint} onChange={setUploadPoint} markerLabel="ANSWER" />
+          <RadarPicker
+            mapId={uploadMapId}
+            layerId={uploadLayer.id}
+            value={uploadPoint}
+            onChange={setUploadPoint}
+            disabled={uploadAnswerMode === "world-coordinates"}
+            markerLabel={uploadAnswerMode === "world-coordinates" ? "WORLD POSITION" : "ANSWER"}
+            markerMode={uploadAnswerMode === "world-coordinates" ? "auto" : "manual"}
+          />
         </div>
-        <button className="primary-button" type="submit" disabled={busy || !uploadFile || !uploadPoint}>UPLOAD TO R2 + PUBLISH TO D1</button>
+        <button className="primary-button" type="submit" disabled={busy || !uploadFile || !uploadPoint || (uploadAnswerMode === "world-coordinates" && !parsedCoordinates)}>UPLOAD TO R2 + PUBLISH TO D1</button>
       </form>
 
       {message && <p className="editor-action-message admin-global-message">{message}</p>}

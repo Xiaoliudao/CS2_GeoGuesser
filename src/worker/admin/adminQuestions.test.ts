@@ -6,6 +6,7 @@ import {
   detectImageType,
   handleAdminRequest,
   requireNormalizedPoint,
+  resolveWorldCoordinateAnswer,
   type AdminQuestionRepository,
 } from "./adminQuestions";
 
@@ -71,6 +72,28 @@ describe("online admin question management", () => {
     expect(requireNormalizedPoint(0.25, 0.75)).toEqual({ x: 0.25, y: 0.75 });
   });
 
+  it("converts pasted CS2 console coordinates into authoritative world metadata and a radar point", () => {
+    const answer = resolveWorldCoordinateAnswer(
+      "mirage",
+      "setpos_exact -2331.545654 -477.949829 -63.248474;setang_exact -13.700989 -145.679047 0.000000",
+    );
+    expect(answer).toMatchObject({
+      mapId: "mirage",
+      layerId: "main",
+      worldPosition: { x: -2331.545654, y: -477.949829, z: -63.248474 },
+      viewAngle: { pitch: -13.700989, yaw: -145.679047, roll: 0 },
+      coordinateSource: "world-conversion",
+    });
+    expect(answer.correctPoint.x).toBeCloseTo(0.175479364453125, 12);
+    expect(answer.correctPoint.y).toBeCloseTo(0.42791988847656254, 12);
+    expect(answer.automaticPoint).toEqual(answer.correctPoint);
+  });
+
+  it("selects a multi-level radar layer from world Z", () => {
+    expect(resolveWorldCoordinateAnswer("nuke", "setpos_exact 0 0 -600").layerId).toBe("lower");
+    expect(resolveWorldCoordinateAnswer("nuke", "setpos_exact 0 0 -400").layerId).toBe("upper");
+  });
+
   it("uploads a real image key to R2 before publishing the D1 row", async () => {
     const events: string[] = [];
     const repository = new MemoryAdminRepository();
@@ -109,6 +132,64 @@ describe("online admin question management", () => {
     expect(repository.questions[0].imageAssetKey).toMatch(/^questions\/q-[a-f0-9]{16}\.jpg$/);
     expect(events[0]).toMatch(/^put:questions\/q-[a-f0-9]{16}\.jpg:image\/jpeg$/);
     expect(events[1]).toMatch(/^head:questions\/q-[a-f0-9]{16}\.jpg$/);
+  });
+
+  it("publishes coordinate-mode uploads using the server calculation instead of client point fields", async () => {
+    const repository = new MemoryAdminRepository();
+    const stored = new Map<string, ArrayBuffer>();
+    const store = {
+      async put(key: string, value: ArrayBuffer) { stored.set(key, value); return {}; },
+      async head(key: string) { return stored.has(key) ? {} : null; },
+      async delete(key: string) { stored.delete(key); },
+    };
+    const form = new FormData();
+    form.set("image", new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "coordinate.jpg", { type: "image/jpeg" }));
+    form.set("mapId", "mirage");
+    form.set("answerMode", "world-coordinates");
+    form.set("consoleCoordinates", "setpos_exact -2331.545654 -477.949829 -63.248474;setang_exact -13.700989 -145.679047 0");
+    form.set("correctX", "0");
+    form.set("correctY", "0");
+    const response = await handleAdminRequest(
+      new Request("https://game.example/admin/api/questions", {
+        method: "POST",
+        headers: { origin: "https://game.example", "x-cs2-admin-action": "1" },
+        body: form,
+      }),
+      adminEnv(store),
+      { email: "admin@example.com" },
+      repository,
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json() as { question: AdminQuestion };
+    expect(body.question.coordinateSource).toBe("world-conversion");
+    expect(body.question.worldPosition).toEqual({ x: -2331.545654, y: -477.949829, z: -63.248474 });
+    expect(body.question.viewAngle).toEqual({ pitch: -13.700989, yaw: -145.679047, roll: 0 });
+    expect(body.question.correctPoint.x).toBeCloseTo(0.175479364453125, 12);
+    expect(body.question.correctPoint.y).toBeCloseTo(0.42791988847656254, 12);
+    expect(body.question.automaticPoint).toEqual(body.question.correctPoint);
+  });
+
+  it("rejects malformed or off-map console coordinates before writing R2", async () => {
+    for (const consoleCoordinates of ["setang_exact 0 0 0", "setpos_exact -9000 1713 0"]) {
+      const form = new FormData();
+      form.set("image", new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "bad.jpg", { type: "image/jpeg" }));
+      form.set("mapId", "mirage");
+      form.set("answerMode", "world-coordinates");
+      form.set("consoleCoordinates", consoleCoordinates);
+      const response = await handleAdminRequest(
+        new Request("https://game.example/admin/api/questions", {
+          method: "POST",
+          headers: { origin: "https://game.example", "x-cs2-admin-action": "1" },
+          body: form,
+        }),
+        adminEnv({}),
+        { email: "admin@example.com" },
+        new MemoryAdminRepository(),
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error: "INVALID_CONSOLE_COORDINATES" });
+    }
   });
 
   it("requires same-origin proof for mutations", async () => {

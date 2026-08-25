@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { MAP_OVERVIEWS } from "./mapOverviews.generated";
+import { MAP_IDS } from "./maps";
 import { selectRadarLayer, worldToRadarPoint, type MapOverview } from "./radarCoordinates";
 
 const mirage: MapOverview = {
@@ -8,6 +10,9 @@ const mirage: MapOverview = {
 };
 
 describe("world to radar conversion", () => {
+  it("ships a synchronized runtime overview for every supported map", () => {
+    expect(Object.keys(MAP_OVERVIEWS).sort()).toEqual([...MAP_IDS].sort());
+  });
   it("uses extracted origin, scale, dimensions, and the overview Y inversion", () => {
     expect(worldToRadarPoint({ x: -3230, y: 1713, z: 0 }, mirage, mirage.layers[0])).toEqual({ x: 0, y: 0 });
     expect(worldToRadarPoint({ x: -670, y: -847, z: 0 }, mirage, mirage.layers[0])).toEqual({ x: 0.5, y: 0.5 });

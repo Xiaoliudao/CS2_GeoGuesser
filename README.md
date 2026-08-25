@@ -82,7 +82,7 @@ npm run questions:export
 https://cs2-map-guesser.457214526y.workers.dev/admin/question-editor
 ```
 
-`/admin/*` 由 Cloudflare Access 保护，只允许当前 Cloudflare account 的成员登录；Worker 还会独立校验 `Cf-Access-Jwt-Assertion` 的签名、issuer 和 audience。页面可以上传 JPEG/PNG/WebP 真实截图（最大 12 MB）、在真实 radar 上设置答案、修改已有坐标并启用或禁用题目。浏览器只使用相对 `/admin/api/*` 和 `/media/*` URL，永远不会获得 R2、D1 或 Cloudflare 凭据。
+`/admin/*` 由 Cloudflare Access 保护，只允许当前 Cloudflare account 的成员登录；Worker 还会独立校验 `Cf-Access-Jwt-Assertion` 的签名、issuer 和 audience。页面可以上传 JPEG/PNG/WebP 真实截图（最大 12 MB），答案既可直接点击真实 radar，也可粘贴 `setpos_exact ...; setang_exact ...`。坐标模式会自动选择楼层、换算 radar point，并把 world position、view angle 和 automatic point 写入 D1；Worker 会使用 radar sync 生成的 overview registry 独立重新计算，不能由浏览器伪造。页面也可以修改已有坐标并启用或禁用题目。浏览器只使用相对 `/admin/api/*` 和 `/media/*` URL，永远不会获得 R2、D1 或 Cloudflare 凭据。
 
 GitHub Actions 会幂等创建该 Access application，并把 `ACCESS_AUD`、`ACCESS_TEAM_DOMAIN` 作为 Worker secrets 批量写入。GitHub Environment `Cloudflare` 中的 API token 除 Workers、D1、R2 部署权限外，还需：
 

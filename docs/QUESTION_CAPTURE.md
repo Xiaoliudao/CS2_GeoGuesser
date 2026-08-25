@@ -10,7 +10,7 @@
 npm run radar:sync
 ```
 
-脚本优先使用本机 CS2 与官方 ValveResourceFormat `Source2Viewer-CLI`。本机没有 CLI 时，它会回退到 `MurkyYT/cs2-map-icons` 的公开、从 CS2 depot 提取的雷达与原始 overview；它不是网站运行时依赖。同步会校验地图名、overview 数值、图片尺寸和 SHA-256，并生成 `content/generated/map-overviews.json`。
+脚本优先使用本机 CS2 与官方 ValveResourceFormat `Source2Viewer-CLI`。本机没有 CLI 时，它会回退到 `MurkyYT/cs2-map-icons` 的公开、从 CS2 depot 提取的雷达与原始 overview；它不是网站运行时依赖。同步会校验地图名、overview 数值、图片尺寸和 SHA-256，并生成 `content/generated/map-overviews.json` 以及供受保护管理页和 Worker 共同校验坐标的 `src/shared/mapOverviews.generated.ts`。
 
 存在 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 时会上传到 R2；没有时只生成待上传的真实资源，不会失败。可用 `--provider local-cs2` 或 `--provider github-extracted` 强制指定来源，用 `--no-upload` 禁止上传。
 

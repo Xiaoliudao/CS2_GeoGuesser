@@ -21,7 +21,7 @@ export interface MapOverview {
   scale: number;
   rotate: number;
   zoom: number;
-  layers: RadarLayerOverview[];
+  layers: readonly RadarLayerOverview[];
   extractedAt: string;
   sourceBuildId: string;
 }

@@ -1,5 +1,13 @@
 import type { AdminQuestion } from "../../shared/adminQuestions";
+import { parseGetpos } from "../../content/getpos";
+import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, getRadarLayer, MAP_IDS, type MapId, type RadarLayerId } from "../../shared/maps";
+import {
+  selectRadarLayer,
+  worldToRadarPoint,
+  type ViewAngle,
+  type WorldPosition,
+} from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import type { Env } from "../env";
 import type { ServerQuestion } from "../game/questions";
@@ -9,6 +17,7 @@ import type { AccessIdentity } from "./accessAuth";
 export const MAX_ADMIN_IMAGE_BYTES = 12 * 1024 * 1024;
 export const MAX_ADMIN_REQUEST_BYTES = MAX_ADMIN_IMAGE_BYTES + 64 * 1024;
 const MAX_JSON_BYTES = 8 * 1024;
+const MAX_CONSOLE_COORDINATE_BYTES = 2 * 1024;
 const OPAQUE_QUESTION_ID = /^[A-Za-z0-9_-]{12,80}$/;
 const ADMIN_MUTATION_HEADER = "x-cs2-admin-action";
 
@@ -98,6 +107,11 @@ function requireString(form: FormData, key: string): string {
   return value.trim();
 }
 
+function requireMapId(value: string): MapId {
+  if (!MAP_IDS.includes(value as MapId)) throw new AdminRequestError(400, "INVALID_MAP_ID");
+  return value as MapId;
+}
+
 function optionalNumber(form: FormData, key: string): number | undefined {
   const value = form.get(key);
   if (value === null || value === "") return undefined;
@@ -119,11 +133,110 @@ export function requireNormalizedPoint(x: number, y: number): MapPoint {
 }
 
 function requireMapAndLayer(mapValue: string, layerValue: string): { mapId: MapId; layerId: RadarLayerId } {
-  if (!MAP_IDS.includes(mapValue as MapId)) throw new AdminRequestError(400, "INVALID_MAP_ID");
-  const mapId = mapValue as MapId;
+  const mapId = requireMapId(mapValue);
   const layer = getRadarLayer(mapId, layerValue);
   if (!layer) throw new AdminRequestError(400, "INVALID_LAYER_ID");
   return { mapId, layerId: layer.id };
+}
+
+interface ResolvedAdminAnswer {
+  mapId: MapId;
+  layerId: RadarLayerId;
+  correctPoint: MapPoint;
+  automaticPoint?: MapPoint;
+  worldPosition?: WorldPosition;
+  viewAngle?: ViewAngle;
+  coordinateSource: ServerQuestion["coordinateSource"];
+}
+
+export function resolveWorldCoordinateAnswer(mapId: MapId, consoleCoordinates: string): ResolvedAdminAnswer {
+  if (
+    consoleCoordinates.trim().length === 0
+    || new TextEncoder().encode(consoleCoordinates).byteLength > MAX_CONSOLE_COORDINATE_BYTES
+  ) {
+    throw new AdminRequestError(400, "INVALID_CONSOLE_COORDINATES");
+  }
+  try {
+    const parsed = parseGetpos(consoleCoordinates);
+    const overview = getMapOverview(mapId);
+    const layer = selectRadarLayer(parsed.worldPosition, overview);
+    const layerDefinition = getRadarLayer(mapId, layer.id);
+    if (!layerDefinition) throw new Error(`INVALID_RUNTIME_OVERVIEW_LAYER ${mapId}/${layer.id}`);
+    const automaticPoint = worldToRadarPoint(parsed.worldPosition, overview, layer);
+    return {
+      mapId,
+      layerId: layerDefinition.id,
+      correctPoint: automaticPoint,
+      automaticPoint,
+      worldPosition: parsed.worldPosition,
+      ...(parsed.viewAngle ? { viewAngle: parsed.viewAngle } : {}),
+      coordinateSource: "world-conversion",
+    };
+  } catch (error) {
+    if (error instanceof AdminRequestError) throw error;
+    throw new AdminRequestError(400, "INVALID_CONSOLE_COORDINATES");
+  }
+}
+
+function resolveFormAnswer(form: FormData): ResolvedAdminAnswer {
+  const answerModeValue = form.get("answerMode");
+  if (
+    answerModeValue !== null
+    && answerModeValue !== "manual-radar"
+    && answerModeValue !== "world-coordinates"
+  ) {
+    throw new AdminRequestError(400, "INVALID_ANSWER_MODE");
+  }
+  if (answerModeValue === "world-coordinates") {
+    const mapId = requireMapId(requireString(form, "mapId"));
+    return resolveWorldCoordinateAnswer(mapId, requireString(form, "consoleCoordinates"));
+  }
+
+  const mapAndLayer = requireMapAndLayer(requireString(form, "mapId"), requireString(form, "layerId"));
+  const correctPoint = requireNormalizedPoint(requiredNumber(form, "correctX"), requiredNumber(form, "correctY"));
+  if (answerModeValue === "manual-radar") {
+    return { ...mapAndLayer, correctPoint, coordinateSource: "manual-override" };
+  }
+
+  // Backward-compatible parsing for older admin clients that submitted the
+  // individual optional audit fields before answerMode existed.
+  const coordinateSource = requireString(form, "coordinateSource");
+  if (coordinateSource !== "world-conversion" && coordinateSource !== "manual-override") {
+    throw new AdminRequestError(400, "INVALID_COORDINATE_SOURCE");
+  }
+  const automaticX = optionalNumber(form, "automaticX");
+  const automaticY = optionalNumber(form, "automaticY");
+  if ((automaticX === undefined) !== (automaticY === undefined)) {
+    throw new AdminRequestError(400, "INVALID_AUTOMATIC_POINT");
+  }
+  const automaticPoint = automaticX === undefined || automaticY === undefined
+    ? undefined
+    : requireNormalizedPoint(automaticX, automaticY);
+  const world = optionalTriple(
+    optionalNumber(form, "worldX"),
+    optionalNumber(form, "worldY"),
+    optionalNumber(form, "worldZ"),
+    "INVALID_WORLD_POSITION",
+  );
+  const pitch = optionalNumber(form, "viewPitch");
+  const yaw = optionalNumber(form, "viewYaw");
+  const roll = optionalNumber(form, "viewRoll");
+  if ((pitch === undefined) !== (yaw === undefined) || (roll !== undefined && pitch === undefined)) {
+    throw new AdminRequestError(400, "INVALID_VIEW_ANGLE");
+  }
+  if (coordinateSource === "world-conversion" && (!automaticPoint || !world)) {
+    throw new AdminRequestError(400, "WORLD_CONVERSION_METADATA_REQUIRED");
+  }
+  return {
+    ...mapAndLayer,
+    correctPoint,
+    ...(automaticPoint ? { automaticPoint } : {}),
+    ...(world ? { worldPosition: { x: world[0], y: world[1], z: world[2] } } : {}),
+    ...(pitch !== undefined && yaw !== undefined
+      ? { viewAngle: { pitch, yaw, roll: roll ?? 0 } }
+      : {}),
+    coordinateSource,
+  };
 }
 
 export function detectImageType(bytes: Uint8Array): SupportedImageType | null {
@@ -195,34 +308,7 @@ async function createQuestion(
   if (!(image instanceof File) || image.size === 0) throw new AdminRequestError(400, "QUESTION_IMAGE_REQUIRED");
   if (image.size > MAX_ADMIN_IMAGE_BYTES) throw new AdminRequestError(413, "QUESTION_IMAGE_TOO_LARGE");
 
-  const mapAndLayer = requireMapAndLayer(requireString(form, "mapId"), requireString(form, "layerId"));
-  const correctPoint = requireNormalizedPoint(requiredNumber(form, "correctX"), requiredNumber(form, "correctY"));
-  const coordinateSource = requireString(form, "coordinateSource");
-  if (coordinateSource !== "world-conversion" && coordinateSource !== "manual-override") {
-    throw new AdminRequestError(400, "INVALID_COORDINATE_SOURCE");
-  }
-
-  const automaticX = optionalNumber(form, "automaticX");
-  const automaticY = optionalNumber(form, "automaticY");
-  if ((automaticX === undefined) !== (automaticY === undefined)) throw new AdminRequestError(400, "INVALID_AUTOMATIC_POINT");
-  const automaticPoint = automaticX === undefined || automaticY === undefined
-    ? undefined
-    : requireNormalizedPoint(automaticX, automaticY);
-  const world = optionalTriple(
-    optionalNumber(form, "worldX"),
-    optionalNumber(form, "worldY"),
-    optionalNumber(form, "worldZ"),
-    "INVALID_WORLD_POSITION",
-  );
-  const pitch = optionalNumber(form, "viewPitch");
-  const yaw = optionalNumber(form, "viewYaw");
-  const roll = optionalNumber(form, "viewRoll");
-  if ((pitch === undefined) !== (yaw === undefined) || (roll !== undefined && pitch === undefined)) {
-    throw new AdminRequestError(400, "INVALID_VIEW_ANGLE");
-  }
-  if (coordinateSource === "world-conversion" && (!automaticPoint || !world)) {
-    throw new AdminRequestError(400, "WORLD_CONVERSION_METADATA_REQUIRED");
-  }
+  const answer = resolveFormAnswer(form);
 
   const imageBuffer = await image.arrayBuffer();
   const detectedType = detectImageType(new Uint8Array(imageBuffer));
@@ -250,15 +336,13 @@ async function createQuestion(
     const question: ServerQuestion = {
       id,
       imageAssetKey,
-      correctMapId: mapAndLayer.mapId,
-      correctLayerId: mapAndLayer.layerId,
-      correctPoint,
-      ...(automaticPoint ? { automaticPoint } : {}),
-      ...(world ? { worldPosition: { x: world[0], y: world[1], z: world[2] } } : {}),
-      ...(pitch !== undefined && yaw !== undefined
-        ? { viewAngle: { pitch, yaw, roll: roll ?? 0 } }
-        : {}),
-      coordinateSource,
+      correctMapId: answer.mapId,
+      correctLayerId: answer.layerId,
+      correctPoint: answer.correctPoint,
+      ...(answer.automaticPoint ? { automaticPoint: answer.automaticPoint } : {}),
+      ...(answer.worldPosition ? { worldPosition: answer.worldPosition } : {}),
+      ...(answer.viewAngle ? { viewAngle: answer.viewAngle } : {}),
+      coordinateSource: answer.coordinateSource,
     };
     await repository.publish({
       ...question,
