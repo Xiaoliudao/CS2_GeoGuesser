@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { scoreVisibleToViewer, validateGuess, type GuessValidationInput } from "./roomState";
+import {
+  allLobbyPlayersReady,
+  scoreVisibleToViewer,
+  toggledReadyState,
+  validateGuess,
+  type GuessValidationInput,
+} from "./roomState";
 
 const valid: GuessValidationInput = {
   playerExists: true,
@@ -70,5 +76,18 @@ describe("viewer-specific score visibility", () => {
 
   it("never exposes a negative score from inconsistent legacy state", () => {
     expect(scoreVisibleToViewer({ ...submittedPlayer, totalScore: 10, currentRoundPoints: 20, viewerPlayerId: "player-b" })).toBe(0);
+  });
+});
+
+describe("lobby readiness", () => {
+  it("toggles ready in both directions", () => {
+    expect(toggledReadyState(false)).toBe(true);
+    expect(toggledReadyState(true)).toBe(false);
+  });
+
+  it("starts only when exactly two players are ready", () => {
+    expect(allLobbyPlayersReady([{ ready: true }, { ready: true }])).toBe(true);
+    expect(allLobbyPlayersReady([{ ready: true }, { ready: false }])).toBe(false);
+    expect(allLobbyPlayersReady([{ ready: true }])).toBe(false);
   });
 });

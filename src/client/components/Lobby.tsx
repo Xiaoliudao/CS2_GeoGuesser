@@ -62,8 +62,13 @@ export function Lobby({
           <span>This match requires {room.settings.totalRounds} verified round{room.settings.totalRounds === 1 ? "" : "s"} from the selected maps.</span>
         </div>
       )}
-      <button className="primary-button ready-button" disabled={me?.ready || room.questionCount < room.settings.totalRounds} onClick={onReady}>
-        {me?.ready ? "YOU'RE READY" : "READY UP"}
+      <button
+        className="primary-button ready-button"
+        aria-pressed={Boolean(me?.ready)}
+        disabled={!me || (!me.ready && room.questionCount < room.settings.totalRounds)}
+        onClick={onReady}
+      >
+        {me?.ready ? "CANCEL READY" : "READY UP"}
       </button>
       {room.players.length < 2 && <small className="waiting-note">WAITING FOR AN OPPONENT…</small>}
     </section>

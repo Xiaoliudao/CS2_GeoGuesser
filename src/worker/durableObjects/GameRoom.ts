@@ -30,7 +30,12 @@ import {
   hasAssetPrepareTimedOut,
   isValidAssetReport,
 } from "../game/assetPreparation";
-import { scoreVisibleToViewer, validateGuess } from "../game/roomState";
+import {
+  allLobbyPlayersReady,
+  scoreVisibleToViewer,
+  toggledReadyState,
+  validateGuess,
+} from "../game/roomState";
 import { normalizeScore, scoreGuess } from "../game/scoring";
 import { createPlayingRoundTiming, createPreparingRoundTiming } from "../game/roundTiming";
 import { QuestionRepository } from "../questions/QuestionRepository";
@@ -334,7 +339,7 @@ export class GameRoom extends DurableObject<Env> {
         this.sendState(socket);
         break;
       case "player:ready":
-        await this.readyPlayer(player);
+        await this.togglePlayerReady(player);
         break;
       case "guess:submit":
         await this.submitGuess(socket, player, event.payload);
@@ -394,17 +399,19 @@ export class GameRoom extends DurableObject<Env> {
     await this.commit();
   }
 
-  private async readyPlayer(player: InternalPlayer): Promise<void> {
+  private async togglePlayerReady(player: InternalPlayer): Promise<void> {
     if (!this.state || this.state.status !== "waiting") return;
     let preparedRound = false;
-    if (!player.ready) player.ready = true;
-    if (this.state.players.length === 2 && this.state.players.every((candidate) => candidate.ready)) {
+    player.ready = toggledReadyState(player.ready);
+    this.logGameEvent("PLAYER_READY_CHANGED", { playerId: player.id, ready: player.ready });
+    if (allLobbyPlayersReady(this.state.players)) {
       try {
         const requiredQuestions = this.state.settings.totalRounds;
         const mapPool = this.state.settings.mapPool;
         const questionCount = await this.questions().countEnabledForMaps(mapPool);
         const snapshotLimit = Math.min(questionCount, requiredQuestions * (MAX_ASSET_PREPARE_RETRIES + 1));
         const questions = await this.questions().getRandomEnabledForMaps(mapPool, snapshotLimit);
+        if (!this.state || this.state.status !== "waiting" || !allLobbyPlayersReady(this.state.players)) return;
         this.state.questionCount = questionCount;
         if (questionCount < requiredQuestions || questions.length < requiredQuestions) {
           for (const candidate of this.state.players) candidate.ready = false;
