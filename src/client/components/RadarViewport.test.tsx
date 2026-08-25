@@ -94,25 +94,53 @@ describe("RadarViewport interactions", () => {
     expect(onPointSelect).not.toHaveBeenCalled();
   });
 
-  it("keeps marker data and screen sizing while the viewport zooms and resets", () => {
+  it("keeps a marker in the sharp screen-space overlay through zoom, pan, and reset", () => {
     render(
       <RadarViewport src="/marked.webp" alt="Marked radar" pointSelectionEnabled onPointSelect={vi.fn()}>
-        <RadarMarker point={{ x: 0.618427, y: 0.391842 }} className="guess-marker" label="YOU" ariaLabel="Selected point" />
+        <RadarMarker point={{ x: 0.6, y: 0.4 }} className="guess-marker" label="YOUR GUESS" ariaLabel="Selected point" />
       </RadarViewport>,
     );
+    const surface = document.querySelector(".radar-gesture-surface") as HTMLDivElement;
+    Object.defineProperty(surface, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 100, top: 50, width: 400, height: 400, right: 500, bottom: 450, x: 100, y: 50, toJSON: () => ({}) }),
+    });
     const image = screen.getByRole("img", { name: "Marked radar" });
     fireEvent.load(image);
 
-    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
-    const layer = document.querySelector(".radar-transform-layer") as HTMLElement;
-    expect(layer.style.getPropertyValue("--radar-marker-inverse-scale")).toBe(String(1 / 1.5));
     const marker = screen.getByRole("img", { name: "Selected point" }) as HTMLElement;
-    expect(Number.parseFloat(marker.style.left)).toBeCloseTo(61.8427, 12);
-    expect(Number.parseFloat(marker.style.top)).toBeCloseTo(39.1842, 12);
+    const layer = document.querySelector(".radar-transform-layer") as HTMLElement;
+    const overlay = document.querySelector(".radar-marker-overlay") as HTMLElement;
+    expect(overlay.contains(marker)).toBe(true);
+    expect(layer.contains(marker)).toBe(false);
+    expect(layer.style.getPropertyValue("--radar-marker-inverse-scale")).toBe("");
+    expect(Number.parseFloat(marker.style.left)).toBeCloseTo(240, 12);
+    expect(Number.parseFloat(marker.style.top)).toBeCloseTo(160, 12);
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByLabelText("Current radar zoom").textContent).toBe("2.0×");
+    expect(Number.parseFloat(marker.style.left)).toBeCloseTo(280, 12);
+    expect(Number.parseFloat(marker.style.top)).toBeCloseTo(120, 12);
+
+    for (let step = 0; step < 4; step += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    }
+    expect(screen.getByLabelText("Current radar zoom").textContent).toBe("4.0×");
+    expect(Number.parseFloat(marker.style.left)).toBeCloseTo(360, 12);
+    expect(Number.parseFloat(marker.style.top)).toBeCloseTo(40, 12);
+
+    fireEvent.pointerDown(surface, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 300, clientY: 250 });
+    fireEvent.pointerMove(surface, { pointerId: 1, pointerType: "mouse", buttons: 1, clientX: 260, clientY: 280 });
+    fireEvent.pointerUp(surface, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 260, clientY: 280 });
+    expect(Number.parseFloat(marker.style.left)).toBeCloseTo(320, 12);
+    expect(Number.parseFloat(marker.style.top)).toBeCloseTo(70, 12);
+    expect(marker.querySelector(".radar-marker-label")?.textContent).toBe("YOUR GUESS");
 
     fireEvent.click(screen.getByRole("button", { name: "Reset radar view" }));
-    expect(screen.getByRole("img", { name: "Selected point" })).toBeTruthy();
     expect(screen.getByLabelText("Current radar zoom").textContent).toBe("1.0×");
+    expect(Number.parseFloat(marker.style.left)).toBeCloseTo(240, 12);
+    expect(Number.parseFloat(marker.style.top)).toBeCloseTo(160, 12);
   });
 
   it("resets the viewport when the radar map or layer source changes", () => {

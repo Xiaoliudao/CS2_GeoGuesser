@@ -1,4 +1,7 @@
+import { useContext } from "react";
 import type { MapPoint } from "../../shared/types";
+import { RadarMarkerOverlayContext } from "./radarMarkerOverlayContext";
+import { radarPointToScreenPoint } from "./radarViewportMath";
 
 export interface RadarMarkerProps {
   point: MapPoint;
@@ -8,10 +11,16 @@ export interface RadarMarkerProps {
 }
 
 export function RadarMarker({ point, className, label, ariaLabel }: RadarMarkerProps) {
+  const overlayTransform = useContext(RadarMarkerOverlayContext);
+  const screenPoint = overlayTransform
+    ? radarPointToScreenPoint(overlayTransform.viewport, overlayTransform.size, point)
+    : null;
   return (
     <span
       className={`radar-marker ${className}`}
-      style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+      style={screenPoint
+        ? { left: screenPoint.x, top: screenPoint.y }
+        : { left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
       role="img"
       aria-label={ariaLabel}
     >

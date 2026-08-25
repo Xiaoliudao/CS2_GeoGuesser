@@ -18,4 +18,15 @@ describe("room stacking order", () => {
     expect(ruleBody(".room-header")).toContain("position: sticky");
     expect(ruleBody(".room-header")).toContain("z-index: 10");
   });
+
+  it("renders markers in an input-transparent overlay without inverse scaling", () => {
+    const overlay = ruleBody(".radar-marker-overlay");
+    const hitArea = ruleBody(".radar-marker-hit-area");
+
+    expect(overlay).toContain("position: absolute");
+    expect(overlay).toContain("pointer-events: none");
+    expect(hitArea).toContain("transform: translate(-50%, -50%)");
+    expect(hitArea).not.toContain("scale(");
+    expect(stylesheet).not.toContain("--radar-marker-inverse-scale");
+  });
 });

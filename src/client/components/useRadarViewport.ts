@@ -59,6 +59,7 @@ export function useRadarViewport({
   const pinchRef = useRef<PinchState | null>(null);
   const viewportRef = useRef<RadarViewportState>(DEFAULT_RADAR_VIEWPORT);
   const [viewport, setViewportState] = useState<RadarViewportState>(DEFAULT_RADAR_VIEWPORT);
+  const [viewportSize, setViewportSize] = useState<RadarViewportSize>({ width: 0, height: 0 });
   const [imageReady, setImageReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -75,6 +76,18 @@ export function useRadarViewport({
       size: { width: rect.width, height: rect.height } satisfies RadarViewportSize,
     };
   }, []);
+
+  const rememberViewportSize = useCallback((size: RadarViewportSize) => {
+    setViewportSize((current) => (
+      current.width === size.width && current.height === size.height ? current : size
+    ));
+  }, []);
+
+  const measureViewport = useCallback(() => {
+    const geometry = getGeometry();
+    if (geometry) rememberViewportSize(geometry.size);
+    return geometry;
+  }, [getGeometry, rememberViewportSize]);
 
   const localPoint = useCallback((clientX: number, clientY: number) => {
     const geometry = getGeometry();
@@ -94,6 +107,7 @@ export function useRadarViewport({
 
   useEffect(() => {
     setImageReady(false);
+    setViewportSize({ width: 0, height: 0 });
     reset();
   }, [reset, src]);
 
@@ -101,8 +115,9 @@ export function useRadarViewport({
     const surface = surfaceRef.current;
     if (!surface) return;
     const clampAfterResize = () => {
-      const rect = surface.getBoundingClientRect();
-      setViewport(clampRadarViewport(viewportRef.current, { width: rect.width, height: rect.height }));
+      const geometry = measureViewport();
+      if (!geometry) return;
+      setViewport(clampRadarViewport(viewportRef.current, geometry.size));
     };
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(clampAfterResize);
     observer?.observe(surface);
@@ -111,7 +126,12 @@ export function useRadarViewport({
       observer?.disconnect();
       window.removeEventListener("resize", clampAfterResize);
     };
-  }, [setViewport]);
+  }, [measureViewport, setViewport]);
+
+  const handleImageLoad = useCallback(() => {
+    measureViewport();
+    setImageReady(true);
+  }, [measureViewport]);
 
   const zoomAt = useCallback((focalPoint: RadarScreenPoint, nextScale: number, size: RadarViewportSize) => {
     if (!panZoomEnabled || !imageReady) return;
@@ -242,9 +262,10 @@ export function useRadarViewport({
   return {
     surfaceRef,
     viewport,
+    viewportSize,
     imageReady,
     isDragging,
-    setImageReady,
+    handleImageLoad,
     reset,
     zoomFromCenter,
     handlePointerDown,

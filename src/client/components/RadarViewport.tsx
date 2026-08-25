@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { MapPoint } from "../../shared/types";
+import { RadarMarkerOverlayContext } from "./radarMarkerOverlayContext";
 import { MAX_RADAR_ZOOM, MIN_RADAR_ZOOM, RADAR_ZOOM_STEP } from "./radarViewportMath";
 import { useRadarViewport } from "./useRadarViewport";
 
@@ -25,8 +26,8 @@ export function RadarViewport({
   const radar = useRadarViewport({ src, pointSelectionEnabled, panZoomEnabled, onPointSelect });
   const transformStyle = {
     transform: `translate3d(${radar.viewport.translateX}px, ${radar.viewport.translateY}px, 0) scale(${radar.viewport.scale})`,
-    "--radar-marker-inverse-scale": 1 / radar.viewport.scale,
   } as CSSProperties;
+  const markerOverlayReady = radar.imageReady && radar.viewportSize.width > 0 && radar.viewportSize.height > 0;
 
   return (
     <div className={`radar-image-wrap radar-viewport ${pointSelectionEnabled ? "is-selectable" : "is-readonly"} ${radar.isDragging ? "is-dragging" : ""} ${className}`.trim()}>
@@ -39,9 +40,13 @@ export function RadarViewport({
         onPointerCancel={radar.handlePointerCancel}
       >
         <div className="radar-transform-layer" style={transformStyle}>
-          <img src={src} alt={alt} draggable={false} onLoad={() => radar.setImageReady(true)} />
-          {children}
+          <img src={src} alt={alt} draggable={false} onLoad={radar.handleImageLoad} />
         </div>
+        {markerOverlayReady && (
+          <RadarMarkerOverlayContext.Provider value={{ viewport: radar.viewport, size: radar.viewportSize }}>
+            <div className="radar-marker-overlay">{children}</div>
+          </RadarMarkerOverlayContext.Provider>
+        )}
       </div>
       {panZoomEnabled && (
         <div className="radar-zoom-controls" role="group" aria-label="Radar zoom controls">

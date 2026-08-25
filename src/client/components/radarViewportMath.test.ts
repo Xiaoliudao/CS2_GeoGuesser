@@ -20,6 +20,23 @@ describe("radar viewport coordinate math", () => {
     expect(screenPointToRadarPoint(viewport, size, screenPoint).y).toBeCloseTo(point.y, 12);
   });
 
+  it("projects the same precise normalized point at 1x, 2x, and 4x without rounding", () => {
+    const point = { x: 0.25, y: 0.75 };
+
+    expect(radarPointToScreenPoint({ scale: 1, translateX: 0, translateY: 0 }, size, point)).toEqual({
+      x: 160,
+      y: 360,
+    });
+    const atTwo = radarPointToScreenPoint({ scale: 2, translateX: -123.456, translateY: -87.654 }, size, point);
+    const atFour = radarPointToScreenPoint({ scale: 4, translateX: -723.456, translateY: -811.234 }, size, point);
+
+    expect(atTwo.x).toBeCloseTo(196.544, 12);
+    expect(atTwo.y).toBeCloseTo(632.346, 12);
+    expect(atFour.x).toBeCloseTo(-83.456, 12);
+    expect(atFour.y).toBeCloseTo(628.766, 12);
+    expect(point).toEqual({ x: 0.25, y: 0.75 });
+  });
+
   it("maps the unzoomed visual center to the normalized center", () => {
     expect(screenPointToRadarPoint(
       { scale: 1, translateX: 0, translateY: 0 },

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SOLO_SETTINGS, type SoloSessionState } from "../../shared/solo";
 import { SoloRoundResult } from "./SoloRoundResult";
@@ -57,6 +57,12 @@ describe("SoloRoundResult", () => {
     };
 
     render(<SoloRoundResult session={session} busy={false} onNext={vi.fn()} />);
+    const surface = document.querySelector(".radar-gesture-surface") as HTMLDivElement;
+    Object.defineProperty(surface, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, width: 400, height: 400, right: 400, bottom: 400, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+    fireEvent.load(screen.getByRole("img", { name: /result radar/i }));
 
     expect(screen.getByRole("img", { name: "Correct answer point" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Your guessed point" })).toBeTruthy();
