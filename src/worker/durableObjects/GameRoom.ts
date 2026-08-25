@@ -14,8 +14,8 @@ import type {
 } from "../../shared/types";
 import type { Env } from "../env";
 import { toPublicQuestion, type ServerQuestion } from "../game/questions";
-import { validateGuess } from "../game/roomState";
-import { ROUND_DURATION_MS, scoreGuess } from "../game/scoring";
+import { scoreVisibleToViewer, validateGuess } from "../game/roomState";
+import { ROUND_DURATION_MS, normalizeScore, scoreGuess } from "../game/scoring";
 import { QuestionRepository } from "../questions/QuestionRepository";
 
 const STATE_KEY = "room-state";
@@ -397,7 +397,7 @@ export class GameRoom extends DurableObject<Env> {
       submittedAt: now,
       ...score,
     };
-    player.score += score.points;
+    player.score = normalizeScore(player.score + score.points);
 
     if (this.state.players.length > 0 && this.state.players.every((candidate) => this.state?.guesses[candidate.id])) {
       this.finishRound(now);
@@ -515,32 +515,42 @@ export class GameRoom extends DurableObject<Env> {
     else await this.scheduleAlarm();
   }
 
-  private publicState(): GameRoomState {
+  private publicState(viewerPlayerId: string | null): GameRoomState {
     if (!this.state) throw new Error("Room is not initialized");
+    const state = this.state;
     const question = this.currentQuestion();
-    const players: PublicPlayer[] = this.state.players.map((player) => ({
-      id: player.id,
-      nickname: player.nickname,
-      connected: player.connected,
-      ready: player.ready,
-      score: player.score,
-      submitted: Boolean(this.state?.guesses[player.id]),
-    }));
+    const players: PublicPlayer[] = state.players.map((player) => {
+      const guess = state.guesses[player.id];
+      return {
+        id: player.id,
+        nickname: player.nickname,
+        connected: player.connected,
+        ready: player.ready,
+        score: scoreVisibleToViewer({
+          status: state.status,
+          playerId: player.id,
+          viewerPlayerId,
+          totalScore: player.score,
+          currentRoundPoints: guess?.points ?? 0,
+        }),
+        submitted: Boolean(guess),
+      };
+    });
     return {
-      roomCode: this.state.roomCode,
-      status: this.state.status,
+      roomCode: state.roomCode,
+      status: state.status,
       players,
-      round: this.state.round,
-      totalRounds: this.state.totalRounds,
-      questionCount: this.state.questionCount,
+      round: state.round,
+      totalRounds: state.totalRounds,
+      questionCount: state.questionCount,
       currentQuestion:
-        (this.state.status === "playing" || this.state.status === "round_result" || this.state.status === "finished") && question
+        (state.status === "playing" || state.status === "round_result" || state.status === "finished") && question
           ? toPublicQuestion(question)
           : null,
-      roundStartedAt: this.state.roundStartedAt,
-      roundEndsAt: this.state.roundEndsAt,
-      roundResult: this.state.status === "round_result" || this.state.status === "finished" ? this.state.roundResult : null,
-      stateVersion: this.state.stateVersion,
+      roundStartedAt: state.roundStartedAt,
+      roundEndsAt: state.roundEndsAt,
+      roundResult: state.status === "round_result" || state.status === "finished" ? state.roundResult : null,
+      stateVersion: state.stateVersion,
     };
   }
 
@@ -549,7 +559,7 @@ export class GameRoom extends DurableObject<Env> {
     this.state.stateVersion += 1;
     await this.ctx.storage.put(STATE_KEY, this.state);
     await this.scheduleAlarm();
-    this.broadcast({ type: "room:state", payload: this.publicState() });
+    this.broadcastState();
   }
 
   private async scheduleAlarm(): Promise<void> {
@@ -563,7 +573,14 @@ export class GameRoom extends DurableObject<Env> {
 
   private sendState(socket: WebSocket): void {
     if (!this.state) return;
-    this.send(socket, { type: "room:state", payload: this.publicState() });
+    this.send(socket, {
+      type: "room:state",
+      payload: this.publicState(this.getAttachment(socket).playerId),
+    });
+  }
+
+  private broadcastState(): void {
+    for (const socket of this.ctx.getWebSockets()) this.sendState(socket);
   }
 
   private broadcast(event: ServerEvent): void {

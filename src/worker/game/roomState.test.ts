@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateGuess, type GuessValidationInput } from "./roomState";
+import { scoreVisibleToViewer, validateGuess, type GuessValidationInput } from "./roomState";
 
 const valid: GuessValidationInput = {
   playerExists: true,
@@ -34,5 +34,41 @@ describe("guess validation", () => {
 
   it("rejects a player that is not part of the room", () => {
     expect(validateGuess({ ...valid, playerExists: false })).toBe("INVALID_PLAYER");
+  });
+});
+
+describe("viewer-specific score visibility", () => {
+  const submittedPlayer = {
+    status: "playing" as const,
+    playerId: "player-a",
+    totalScore: 1_697.5,
+    currentRoundPoints: 497.5,
+  };
+
+  it("shows the submitting player their own updated total immediately", () => {
+    expect(scoreVisibleToViewer({ ...submittedPlayer, viewerPlayerId: "player-a" })).toBe(1_697.5);
+  });
+
+  it("keeps the opponent and unauthenticated sockets on the pre-round total", () => {
+    expect(scoreVisibleToViewer({ ...submittedPlayer, viewerPlayerId: "player-b" })).toBe(1_200);
+    expect(scoreVisibleToViewer({ ...submittedPlayer, viewerPlayerId: null })).toBe(1_200);
+  });
+
+  it.each(["round_result", "finished", "waiting"] as const)("reveals the synchronized total during %s", (status) => {
+    expect(scoreVisibleToViewer({ ...submittedPlayer, status, viewerPlayerId: "player-b" })).toBe(1_697.5);
+  });
+
+  it("leaves an opponent score unchanged before that opponent submits", () => {
+    expect(scoreVisibleToViewer({
+      status: "playing",
+      playerId: "player-b",
+      viewerPlayerId: "player-a",
+      totalScore: 800,
+      currentRoundPoints: 0,
+    })).toBe(800);
+  });
+
+  it("never exposes a negative score from inconsistent legacy state", () => {
+    expect(scoreVisibleToViewer({ ...submittedPlayer, totalScore: 10, currentRoundPoints: 20, viewerPlayerId: "player-b" })).toBe(0);
   });
 });

@@ -21,10 +21,14 @@ export function distanceBetween(first: MapPoint, second: MapPoint): number {
   return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
+export function normalizeScore(points: number): number {
+  return Math.round(points * 1_000) / 1_000;
+}
+
 export function calculateTimeBonus(elapsedMs: number): number {
   const boundedElapsedMs = Math.min(ROUND_DURATION_MS, Math.max(0, elapsedMs));
   const bonus = (MAX_TIME_BONUS * (ROUND_DURATION_MS - boundedElapsedMs)) / ROUND_DURATION_MS;
-  return Math.round(bonus * 1_000) / 1_000;
+  return normalizeScore(bonus);
 }
 
 export function scoreGuess(

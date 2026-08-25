@@ -60,6 +60,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function normalizeScore(points) {
+  return Math.round(points * 1_000) / 1_000;
+}
+
 const createResponse = await fetch(`${baseUrl}/api/rooms`, { method: "POST" });
 assert(createResponse.status === 201, `Expected room creation 201, got ${createResponse.status}`);
 const { roomCode } = await createResponse.json();
@@ -106,10 +110,19 @@ try {
       assert(!playingPayload.includes(forbiddenKey), `Playing state leaked ${forbiddenKey}`);
     }
 
+    const previousAlphaScore = currentAlphaRound.players.find((player) => player.id === alpha.playerId)?.score;
+    assert(typeof previousAlphaScore === "number", `Round ${round} is missing Alpha's starting score`);
     activeAlpha.send({
       type: "guess:submit",
       payload: { round, eventId: crypto.randomUUID(), mapId: "mirage", layerId: "main", point: { x: 0.2, y: 0.3 } },
     });
+    const [alphaSubmittedState, bravoObservingState] = await Promise.all([
+      activeAlpha.waitFor((state) => state.status === "playing" && state.round === round && state.players.some((player) => player.id === alpha.playerId && player.submitted)),
+      bravo.waitFor((state) => state.status === "playing" && state.round === round && state.players.some((player) => player.id === alpha.playerId && player.submitted)),
+    ]);
+    const alphaScoreForSelf = alphaSubmittedState.players.find((player) => player.id === alpha.playerId)?.score;
+    const alphaScoreForBravo = bravoObservingState.players.find((player) => player.id === alpha.playerId)?.score;
+    assert(alphaScoreForBravo === previousAlphaScore, `Round ${round} leaked Alpha's current-round score to Bravo`);
     bravo.send({
       type: "guess:submit",
       payload: { round, eventId: crypto.randomUUID(), mapId: "overpass", layerId: "main", point: { x: 0.8, y: 0.7 } },
@@ -124,6 +137,9 @@ try {
     const bravoRoundResult = alphaResult.roundResult.players.find((player) => player.playerId === bravo.playerId);
     assert(alphaRoundResult?.pointGuess?.x === 0.2 && alphaRoundResult?.pointGuess?.y === 0.3, "Player 1 point was not preserved");
     assert(bravoRoundResult?.pointGuess?.x === 0.8 && bravoRoundResult?.pointGuess?.y === 0.7, "Player 2 point was not preserved");
+    const expectedAlphaScore = normalizeScore(previousAlphaScore + alphaRoundResult.points);
+    assert(alphaScoreForSelf === expectedAlphaScore, `Round ${round} did not update Alpha's own score immediately`);
+    assert(alphaResult.players.find((player) => player.id === alpha.playerId)?.score === expectedAlphaScore, `Round ${round} did not reveal Alpha's score after result`);
     assert(alphaResult.players.every((player) => player.submitted), "Submission status was not synchronized");
 
     if (round === 1) {
@@ -155,6 +171,8 @@ try {
     roundsCompleted: roundsToPlay,
     answersHiddenDuringRound: true,
     deadlineSynchronized: true,
+    opponentScoreHiddenUntilResult: true,
+    ownScoreUpdatedImmediately: true,
     reconnectRestored: true,
     gameFinished: true,
     playAgainReset: true,

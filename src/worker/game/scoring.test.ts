@@ -8,6 +8,7 @@ import {
   ROUND_DURATION_MS,
   calculateTimeBonus,
   distanceBetween,
+  normalizeScore,
   scoreGuess,
 } from "./scoring";
 
@@ -86,5 +87,10 @@ describe("coordinate scoring", () => {
     expect(calculateTimeBonus(ROUND_DURATION_MS / 2)).toBe(MAX_TIME_BONUS / 2);
     expect(calculateTimeBonus(ROUND_DURATION_MS)).toBe(0);
     expect(calculateTimeBonus(ROUND_DURATION_MS + 1)).toBe(0);
+  });
+
+  it("normalizes accumulated scores to the public precision", () => {
+    expect(normalizeScore(697.49 + 497.5)).toBe(1_194.99);
+    expect(normalizeScore(0.1 + 0.2)).toBe(0.3);
   });
 });
