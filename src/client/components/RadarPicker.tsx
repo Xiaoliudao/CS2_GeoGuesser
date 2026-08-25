@@ -1,5 +1,6 @@
 import { getMap, getRadarLayer, type MapId, type RadarLayerId } from "../../shared/maps";
 import type { MapPoint } from "../../shared/types";
+import { RadarMarker } from "./RadarMarker";
 
 export interface RadarPickerProps {
   mapId: MapId;
@@ -50,14 +51,12 @@ export function RadarPicker({
           }}
         />
         {value && (
-          <span
-            className={`radar-marker guess-marker ${markerMode === "auto" ? "is-auto" : "is-manual"}`}
-            style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%` }}
-            aria-label={`Guess at ${(value.x * 100).toFixed(1)}%, ${(value.y * 100).toFixed(1)}%`}
-          >
-            <i />
-            <b>{markerLabel}</b>
-          </span>
+          <RadarMarker
+            point={value}
+            className={`guess-marker ${markerMode === "auto" ? "is-auto" : "is-manual"}`}
+            label={markerLabel}
+            ariaLabel={`Guess at ${(value.x * 100).toFixed(3)}%, ${(value.y * 100).toFixed(3)}%`}
+          />
         )}
       </div>
       {!value && <p className="radar-instruction">CLICK THE RADAR TO PLACE YOUR MARKER</p>}

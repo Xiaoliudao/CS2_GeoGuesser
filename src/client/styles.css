@@ -10,6 +10,10 @@
   --panel-2: #172126;
   --line: #29353a;
   --muted: #849097;
+  --radar-marker-hit-size: 40px;
+  --radar-marker-size: 20px;
+  --radar-marker-center-size: 3px;
+  --radar-marker-crosshair-size: 28px;
 }
 
 * { box-sizing: border-box; }
@@ -357,13 +361,15 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .radar-image-wrap > img { display: block; width: 100%; height: auto; cursor: crosshair; user-select: none; }
 .radar-picker.is-disabled .radar-image-wrap > img { cursor: default; }
 .radar-instruction { margin: 9px 0 0; color: #738086; font-size: 8px; font-weight: 700; letter-spacing: .14em; }
-.radar-marker { position: absolute; transform: translate(-50%, -50%); z-index: 3; pointer-events: none; display: grid; place-items: center; line-height: 1; }
-.radar-marker i { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-style: normal; font-size: 9px; font-weight: 900; }
-.radar-marker b { position: absolute; top: 32px; white-space: nowrap; padding: 4px 6px; font-size: 7px; letter-spacing: .1em; background: rgba(7,10,12,.9); border: 1px solid currentColor; }
-.guess-marker { color: #fff; }
-.guess-marker i { background: var(--orange); border: 3px solid white; box-shadow: 0 0 0 5px rgba(255,107,44,.22), 0 0 18px rgba(255,107,44,.7); }
-.guess-marker i::before, .guess-marker i::after { content: ""; position: absolute; background: rgba(255,255,255,.7); }
-.guess-marker i::before { width: 48px; height: 1px; }.guess-marker i::after { width: 1px; height: 48px; }
+.radar-marker { position: absolute; width: var(--radar-marker-hit-size); height: var(--radar-marker-hit-size); transform: translate(-50%, -50%); z-index: 3; pointer-events: none; color: var(--orange-bright); line-height: 1; }
+.radar-marker-hit-area { position: absolute; inset: 0; display: grid; place-items: center; }
+.radar-marker-visual { position: relative; display: block; width: var(--radar-marker-size); height: var(--radar-marker-size); border: 1px solid currentColor; border-radius: 50%; background: rgba(7,10,12,.72); box-shadow: 0 0 0 1px rgba(0,0,0,.72); }
+.radar-marker-center { position: absolute; left: 50%; top: 50%; width: var(--radar-marker-center-size); height: var(--radar-marker-center-size); transform: translate(-50%, -50%); border-radius: 50%; background: currentColor; box-shadow: 0 0 0 1px rgba(4,7,8,.9); }
+.radar-marker-label { position: absolute; left: 50%; top: calc(50% + 13px); transform: translateX(-50%); white-space: nowrap; padding: 3px 4px; color: currentColor; font-size: 6px; letter-spacing: .08em; background: rgba(7,10,12,.88); border: 1px solid currentColor; }
+.guess-marker .radar-marker-visual { background: rgba(255,107,44,.13); box-shadow: 0 0 0 1px rgba(0,0,0,.72), 0 0 7px rgba(255,107,44,.52); }
+.guess-marker .radar-marker-visual::before, .guess-marker .radar-marker-visual::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: currentColor; opacity: .82; }
+.guess-marker .radar-marker-visual::before { width: var(--radar-marker-crosshair-size); height: 1px; }
+.guess-marker .radar-marker-visual::after { width: 1px; height: var(--radar-marker-crosshair-size); }
 .confirm-guess { margin-top: 14px; }
 
 .question-workspace { display: flex; flex-direction: column; padding: 12px; }
@@ -387,10 +393,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .result-radar-panel, .result-question-image { min-width: 0; padding: 16px; background: #0d1417; border: 1px solid var(--line); }
 .result-radar { max-width: 600px; }
 .result-radar > img { cursor: default; }
-.result-marker i { border: 2px solid #fff; box-shadow: 0 0 0 3px rgba(0,0,0,.38); }
-.correct-point { color: #d7ff87; z-index: 6; }.correct-point i { background: #659d24; }
-.your-point { color: #ffb18c; z-index: 5; }.your-point i { background: var(--orange); }
-.opponent-point { color: #86dff1; z-index: 4; }.opponent-point i { background: #278da3; }
+.result-marker .radar-marker-visual { background: rgba(7,10,12,.82); }
+.correct-point { color: #d7ff87; z-index: 6; }.correct-point .radar-marker-visual { box-shadow: 0 0 0 1px currentColor, 0 0 7px rgba(163,225,81,.55); }
+.your-point { color: #ff9a6d; z-index: 5; }.your-point .radar-marker-visual { border-width: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.72), 0 0 7px rgba(255,107,44,.5); }
+.opponent-point { color: #86dff1; z-index: 4; }.opponent-point .radar-marker-visual { border-style: dashed; box-shadow: 0 0 0 1px rgba(0,0,0,.72), 0 0 7px rgba(39,141,163,.5); }
 .marker-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 16px; margin-top: 12px; color: #929da2; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
 .result-question-image { display: grid; place-items: center; }
 .result-question-image img { display: block; width: 100%; height: 100%; max-height: 620px; object-fit: contain; }
@@ -416,7 +422,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .editor-actions button { margin: 0; }
 .editor-action-message { margin: 10px 0 0; padding: 9px; color: #b9ee7c; background: #080c0e; border-left: 2px solid #80ad45; font-size: 10px; overflow-wrap: anywhere; }
 .editor-radar .guess-marker.is-auto { color: #d7ff87; }
-.editor-radar .guess-marker.is-auto i { background: #659d24; box-shadow: 0 0 0 5px rgba(101,157,36,.22), 0 0 18px rgba(163,225,81,.7); }
+.editor-radar .guess-marker.is-auto .radar-marker-visual { background: rgba(101,157,36,.14); box-shadow: 0 0 0 1px rgba(0,0,0,.72), 0 0 7px rgba(163,225,81,.58); }
 .editor-preview img { width: 100%; max-height: 360px; display: block; object-fit: contain; }
 .editor-empty { max-width: 760px; margin: 80px auto 0; padding: 28px; }
 .admin-editor-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
