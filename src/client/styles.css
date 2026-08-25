@@ -158,7 +158,9 @@ input:focus, select:focus { border-color: var(--orange); box-shadow: 0 0 0 2px r
 .room-identity { display: flex; align-items: center; gap: 10px; }
 .room-identity > span { color: #6f7b81; font-size: 9px; font-weight: 700; letter-spacing: .17em; }
 .room-identity strong { font: 800 19px/1 "Arial Narrow", sans-serif; letter-spacing: .22em; color: #fff; }
-.copy-button { color: #89959a; background: #151d20; border: 1px solid #303b40; height: 25px; padding: 0 8px; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
+.copy-button { min-width: 84px; color: #89959a; background: #151d20; border: 1px solid #303b40; height: 25px; padding: 0 8px; font-size: 8px; font-weight: 700; letter-spacing: .1em; transition: color .16s ease, border-color .16s ease, background .16s ease; }
+.copy-button.is-copied { color: #d7ff87; border-color: #6f9b42; background: rgba(128,173,69,.12); }
+.copy-button.is-failed { color: #ff9a78; border-color: #a94c31; background: rgba(255,107,44,.1); }
 .connection-status { justify-self: end; display: flex; align-items: center; gap: 7px; color: #ffb182; font-size: 9px; font-weight: 700; letter-spacing: .12em; white-space: nowrap; }
 .connection-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 9px var(--orange); }
 .connection-status.is-connected { color: #a6c77b; }

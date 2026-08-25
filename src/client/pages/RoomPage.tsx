@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import type { ClientEvent } from "../../shared/protocol";
 import { navigate } from "../App";
 import { ConnectionStatus } from "../components/ConnectionStatus";
+import { CopyRoomCodeButton } from "../components/CopyRoomCodeButton";
 import { GameResult } from "../components/GameResult";
 import { GameScreen } from "../components/GameScreen";
 import { Lobby } from "../components/Lobby";
@@ -41,13 +42,7 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
         <div className="room-identity">
           <span>ROOM</span>
           <strong>{roomCode}</strong>
-          <button
-            className="copy-button"
-            title="Copy room code"
-            onClick={() => void navigator.clipboard.writeText(roomCode)}
-          >
-            COPY
-          </button>
+          <CopyRoomCodeButton roomCode={roomCode} />
         </div>
         <ConnectionStatus status={connection} rttMs={rttMs} />
       </header>
