@@ -39,6 +39,7 @@ import {
 import { normalizeScore, scoreGuess } from "../game/scoring";
 import { createPlayingRoundTiming, createPreparingRoundTiming } from "../game/roundTiming";
 import { QuestionRepository } from "../questions/QuestionRepository";
+import { missingRoomInvitePreview, roomInvitePreview } from "../game/roomInvitePreview";
 
 const STATE_KEY = "room-state";
 const RESULT_DURATION_MS = 5_000;
@@ -187,6 +188,23 @@ export class GameRoom extends DurableObject<Env> {
 
     if (url.pathname === "/exists") {
       return Response.json({ exists: this.state !== null });
+    }
+
+    if (url.pathname === "/preview" && request.method === "GET") {
+      const headers = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
+      if (!this.state) {
+        const roomCode = request.headers.get("x-room-code") ?? "AAAAA";
+        return Response.json(missingRoomInvitePreview(roomCode), { status: 404, headers });
+      }
+      await this.reconcileAndCommit(Date.now());
+      const viewerPlayerId = request.headers.get("x-viewer-player-id");
+      return Response.json(roomInvitePreview({
+        roomCode: this.state.roomCode,
+        status: this.state.status,
+        settings: this.state.settings,
+        playerIds: this.state.players.map((player) => player.id),
+        viewerPlayerId,
+      }), { headers });
     }
 
     if (url.pathname !== "/websocket" || request.headers.get("Upgrade") !== "websocket") {

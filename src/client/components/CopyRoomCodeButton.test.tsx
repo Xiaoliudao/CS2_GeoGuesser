@@ -24,7 +24,7 @@ describe("CopyRoomCodeButton", () => {
     writeText.mockResolvedValue(undefined);
     render(<CopyRoomCodeButton roomCode="K7P2A" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "COPY" }));
+    fireEvent.click(screen.getByRole("button", { name: "COPY CODE" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "COPIED ✓" })).toBeTruthy());
     expect(writeText).toHaveBeenCalledWith("K7P2A");
@@ -35,7 +35,7 @@ describe("CopyRoomCodeButton", () => {
     writeText.mockRejectedValue(new Error("permission denied"));
     render(<CopyRoomCodeButton roomCode="K7P2A" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "COPY" }));
+    fireEvent.click(screen.getByRole("button", { name: "COPY CODE" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "COPY FAILED" })).toBeTruthy());
     expect(screen.getByRole("button", { name: "COPY FAILED" }).classList.contains("is-failed")).toBe(true);
@@ -47,12 +47,12 @@ describe("CopyRoomCodeButton", () => {
     render(<CopyRoomCodeButton roomCode="K7P2A" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "COPY" }));
+    fireEvent.click(screen.getByRole("button", { name: "COPY CODE" }));
       await Promise.resolve();
     });
     expect(screen.getByRole("button", { name: "COPIED ✓" })).toBeTruthy();
 
     act(() => vi.advanceTimersByTime(2_000));
-    expect(screen.getByRole("button", { name: "COPY" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "COPY CODE" })).toBeTruthy();
   });
 });

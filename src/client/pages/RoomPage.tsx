@@ -5,6 +5,7 @@ import { ConnectionStatus } from "../components/ConnectionStatus";
 import { CopyRoomCodeButton } from "../components/CopyRoomCodeButton";
 import { GameResult } from "../components/GameResult";
 import { GameScreen } from "../components/GameScreen";
+import { InviteRoomButton } from "../components/InviteRoomButton";
 import { Lobby } from "../components/Lobby";
 import { RoundResult } from "../components/RoundResult";
 import { RoundPreparation } from "../components/RoundPreparation";
@@ -43,6 +44,7 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           <span>ROOM</span>
           <strong>{roomCode}</strong>
           <CopyRoomCodeButton roomCode={roomCode} />
+          <InviteRoomButton roomCode={roomCode} />
         </div>
         <ConnectionStatus status={connection} rttMs={rttMs} />
       </header>

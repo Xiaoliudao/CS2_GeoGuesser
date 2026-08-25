@@ -62,4 +62,13 @@ describe("Lobby ready toggle", () => {
     render(<Lobby room={waitingRoom(true, 0)} playerId="player-a" onReady={vi.fn()} />);
     expect((screen.getByRole("button", { name: "CANCEL READY" }) as HTMLButtonElement).disabled).toBe(false);
   });
+
+  it("offers an invite action for an open player slot", () => {
+    const room = waitingRoom(false);
+    room.players = room.players.slice(0, 1);
+    render(<Lobby room={room} playerId="player-a" onReady={vi.fn()} />);
+
+    expect(screen.getByText("INVITE A PLAYER TO JOIN")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "INVITE PLAYER" })).toBeTruthy();
+  });
 });

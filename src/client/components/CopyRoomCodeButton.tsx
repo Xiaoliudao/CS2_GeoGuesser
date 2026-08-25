@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { copyText } from "../lib/clipboard";
 
 type CopyStatus = "idle" | "copied" | "failed";
 
@@ -18,20 +19,14 @@ export function CopyRoomCodeButton({ roomCode }: { roomCode: string }) {
 
   const copyRoomCode = async () => {
     clearResetTimer();
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error("CLIPBOARD_UNAVAILABLE");
-      await navigator.clipboard.writeText(roomCode);
-      setStatus("copied");
-    } catch {
-      setStatus("failed");
-    }
+    setStatus(await copyText(roomCode) ? "copied" : "failed");
     resetTimerRef.current = window.setTimeout(() => {
       setStatus("idle");
       resetTimerRef.current = null;
     }, RESET_DELAY_MS);
   };
 
-  const label = status === "copied" ? "COPIED ✓" : status === "failed" ? "COPY FAILED" : "COPY";
+  const label = status === "copied" ? "COPIED ✓" : status === "failed" ? "COPY FAILED" : "COPY CODE";
   const title = status === "copied"
     ? "Room code copied"
     : status === "failed"

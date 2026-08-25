@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { HomePage } from "./pages/HomePage";
+import { InviteJoinPage } from "./pages/InviteJoinPage";
 import { RoomPage } from "./pages/RoomPage";
 
 const DevQuestionEditorPage = import.meta.env.DEV
@@ -39,6 +40,7 @@ export function App() {
   }, []);
 
   const roomMatch = path.match(/^\/room\/([A-HJ-NP-Z2-9]{5})\/?$/i);
+  const inviteMatch = path.match(/^\/join\/([^/]+)\/?$/i);
   if (DevQuestionEditorPage && path === "/dev/question-editor") {
     return <Suspense fallback={null}><DevQuestionEditorPage /></Suspense>;
   }
@@ -46,6 +48,7 @@ export function App() {
     return <Suspense fallback={null}><AdminQuestionEditorPage /></Suspense>;
   }
   if (roomMatch) return <RoomPage roomCode={roomMatch[1].toUpperCase()} />;
+  if (inviteMatch) return <InviteJoinPage roomCode={inviteMatch[1]} />;
   if (path === "/") return <HomePage />;
   return <NotFoundPage />;
 }

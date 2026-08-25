@@ -1,5 +1,6 @@
 import type { GameRoomState } from "../../shared/types";
 import { getMap } from "../../shared/maps";
+import { InviteRoomButton } from "./InviteRoomButton";
 
 export function Lobby({
   room,
@@ -42,7 +43,8 @@ export function Lobby({
           ) : (
             <div className="lobby-player empty" key={slot}>
               <div className="avatar">?</div>
-              <div><strong>OPEN SLOT</strong><span>SHARE THE ROOM CODE</span></div>
+              <div><strong>OPEN SLOT</strong><span>INVITE A PLAYER TO JOIN</span></div>
+              <InviteRoomButton roomCode={room.roomCode} compact />
             </div>
           );
         })}

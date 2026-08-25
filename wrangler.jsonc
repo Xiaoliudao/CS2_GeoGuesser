@@ -18,6 +18,7 @@
 			"/ws/*",
 			"/media/*",
 			"/room/*",
+			"/join/*",
 			"/dev/*",
 			"/admin/*",
 			"/robots.txt",

@@ -1,4 +1,4 @@
-import { roomCodeSchema } from "../shared/schemas";
+import { playerIdSchema, roomCodeSchema } from "../shared/schemas";
 import { getRadarLayer, MAP_IDS } from "../shared/maps";
 import {
   CreateRoomRequestSchema,
@@ -13,7 +13,7 @@ import { GameRoom } from "./durableObjects/GameRoom";
 import type { Env } from "./env";
 import { mediaResponse, questionMediaResponse, radarObjectKey } from "./media";
 import { QuestionRepository } from "./questions/QuestionRepository";
-import { faviconResponse, isNoIndexPath, robotsResponse, sitemapResponse, spaDocumentResponse, withNoIndex } from "./seo";
+import { faviconResponse, isNoIndexPath, isSpaDocumentPath, robotsResponse, sitemapResponse, spaDocumentResponse, withNoIndex } from "./seo";
 
 const OPAQUE_QUESTION_ID = /^[A-Za-z0-9_-]{12,80}$/;
 
@@ -108,7 +108,7 @@ async function questionAvailability(request: Request, env: Env): Promise<Respons
   }
 }
 
-async function routeRequest(request: Request, env: Env): Promise<Response> {
+export async function routeRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/robots.txt" && (request.method === "GET" || request.method === "HEAD")) {
@@ -180,6 +180,29 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
       }
     }
 
+    const roomPreviewMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/preview$/);
+    if (roomPreviewMatch && request.method === "GET") {
+      const parsed = roomCodeSchema.safeParse(roomPreviewMatch[1]);
+      if (!parsed.success) {
+        return Response.json({ error: "INVALID_ROOM_CODE" }, {
+          status: 400,
+          headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
+        });
+      }
+      const viewerPlayerId = playerIdSchema.safeParse(request.headers.get("x-cs2-player-id"));
+      const headers = new Headers({
+        accept: "application/json",
+        "x-room-code": parsed.data,
+      });
+      if (viewerPlayerId.success) headers.set("x-viewer-player-id", viewerPlayerId.data);
+      const response = await roomStub(env, parsed.data).fetch("https://game-room/preview", { headers });
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    }
+
     const roomApiMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)$/);
     if (roomApiMatch && request.method === "GET") {
       const parsed = roomCodeSchema.safeParse(roomApiMatch[1]);
@@ -201,10 +224,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
     }
 
     const isDocumentRequest = request.method === "GET" || request.method === "HEAD";
-    const isRoomPage = /^\/room\/[A-HJ-NP-Z2-9]{5}\/?$/i.test(url.pathname);
-    const isAdminPage = /^\/admin\/question-editor\/?$/.test(url.pathname);
-    const isDevelopmentEditor = import.meta.env.DEV && /^\/dev\/question-editor\/?$/.test(url.pathname);
-    if (isDocumentRequest && (isRoomPage || isAdminPage || isDevelopmentEditor)) {
+    if (isDocumentRequest && isSpaDocumentPath(url.pathname, import.meta.env.DEV)) {
       return spaDocumentResponse(request, env.ASSETS);
     }
 

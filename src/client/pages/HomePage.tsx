@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { nicknameSchema, roomCodeSchema } from "../../shared/schemas";
+import { nicknameSchema } from "../../shared/schemas";
 import { MAP_IDS, type MapId } from "../../shared/maps";
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -19,6 +19,7 @@ import {
   MatchSettingsPanel,
 } from "../components/MatchSettingsPanel";
 import { getNickname, getPlayerId, saveNickname } from "../lib/identity";
+import { joinRoom as joinExistingRoom } from "../lib/joinRoom";
 
 const CREATE_ROOM_ERROR_MESSAGES: Record<string, string> = {
   INVALID_ROOM_SETTINGS: "The match settings payload is invalid.",
@@ -207,27 +208,12 @@ export function HomePage() {
 
   const joinRoom = async (event: FormEvent) => {
     event.preventDefault();
-    if (!validateNickname()) return;
-    const parsed = roomCodeSchema.safeParse(roomCode);
-    if (!parsed.success) {
-      setError("Enter a valid 5-character room code.");
-      return;
-    }
     setBusy(true);
     setError("");
-    try {
-      const response = await fetch(`/api/rooms/${parsed.data}`);
-      if (response.status === 404) {
-        setError("Room not found. Check the code and try again.");
-        return;
-      }
-      if (!response.ok) throw new Error("Room lookup failed");
-      navigate(`/room/${parsed.data}`);
-    } catch {
-      setError("Could not reach the game server.");
-    } finally {
-      setBusy(false);
-    }
+    const result = await joinExistingRoom({ roomCode, nickname });
+    setBusy(false);
+    if (result.ok) navigate(`/room/${result.roomCode}`);
+    else setError(result.message);
   };
 
   return (

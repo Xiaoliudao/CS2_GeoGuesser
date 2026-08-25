@@ -6,12 +6,13 @@ export const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{5}$/;
 
 export const nicknameSchema = z.string().trim().min(2).max(20);
 export const roomCodeSchema = z.string().trim().toUpperCase().regex(ROOM_CODE_PATTERN);
+export const playerIdSchema = z.string().uuid();
 
 export const clientEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal(CLIENT_EVENTS.JOIN),
     payload: z.object({
-      playerId: z.string().uuid(),
+      playerId: playerIdSchema,
       nickname: nicknameSchema,
     }),
   }),

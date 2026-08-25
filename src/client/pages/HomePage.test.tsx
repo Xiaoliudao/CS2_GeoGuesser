@@ -18,6 +18,7 @@ interface FetchScenario {
   availableQuestions?: number;
   createStatus?: number;
   createBody?: Record<string, unknown>;
+  previewBody?: Record<string, unknown>;
 }
 
 function response(status: number, body: unknown): Response {
@@ -32,6 +33,16 @@ function installFetch({
   availableQuestions = 61,
   createStatus = 200,
   createBody = { roomCode: "ABCDE" },
+  previewBody = {
+    exists: true,
+    joinable: true,
+    reconnectable: false,
+    roomCode: "87MDB",
+    reason: null,
+    playerCount: 1,
+    maxPlayers: 2,
+    settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
+  },
 }: FetchScenario = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -39,6 +50,7 @@ function installFetch({
       return response(200, { availableQuestions, byMap: {} });
     }
     if (url === "/api/rooms") return response(createStatus, createBody);
+    if (url === "/api/rooms/87MDB/preview") return response(200, previewBody);
     throw new Error(`Unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -167,5 +179,18 @@ describe("HomePage compact room creation", () => {
     await waitFor(() => expect(document.activeElement).toBe(availability));
     expect(availability.textContent).toContain(message);
     expect(availability.textContent).not.toContain("61 QUESTIONS AVAILABLE");
+  });
+
+  it("keeps manual room-code joining as a fallback through the shared join action", async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch();
+    render(<HomePage />);
+    await waitForAvailability();
+
+    await user.type(screen.getByLabelText("ROOM CODE"), "87mdb");
+    await user.click(screen.getByRole("button", { name: "JOIN ROOM" }));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/room/87MDB"));
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/rooms/87MDB/preview")).toBe(true);
   });
 });

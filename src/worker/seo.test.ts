@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { renderSiteHtml, SITE_CONFIG } from "../shared/siteConfig";
-import { isNoIndexPath, robotsResponse, sitemapResponse, spaDocumentResponse, withNoIndex } from "./seo";
+import { isNoIndexPath, isSpaDocumentPath, robotsResponse, sitemapResponse, spaDocumentResponse, withNoIndex } from "./seo";
 
 describe("SEO documents", () => {
   it("renders complete homepage metadata from the canonical site config", () => {
@@ -38,6 +38,7 @@ describe("SEO documents", () => {
     expect(response.headers.get("content-type")).toBe("text/plain; charset=UTF-8");
     expect(body).toContain("Allow: /");
     expect(body).toContain("Disallow: /room/");
+    expect(body).toContain("Disallow: /join/");
     expect(body).toContain("Disallow: /dev/");
     expect(body).toContain("Disallow: /api/");
     expect(body).toContain(`Sitemap: ${SITE_CONFIG.origin}/sitemap.xml`);
@@ -51,6 +52,7 @@ describe("SEO documents", () => {
     expect(body.match(/<url>/g)).toHaveLength(1);
     expect(body).toContain(`<loc>${SITE_CONFIG.origin}/</loc>`);
     expect(body).not.toContain("/room/");
+    expect(body).not.toContain("/join/");
     expect(body).not.toContain("/dev/");
     expect(body).not.toContain("/api/");
   });
@@ -59,12 +61,28 @@ describe("SEO documents", () => {
 describe("non-indexable routes", () => {
   it.each([
     "/room/ABCDE",
+    "/join/ABCDE",
     "/room/TEST",
     "/dev/question-editor",
     "/admin/question-editor",
     "/api/questions/meta",
   ])("marks %s as non-indexable", (pathname) => {
     expect(isNoIndexPath(pathname)).toBe(true);
+  });
+
+  it("recognizes direct invite navigation as an SPA document without matching APIs", () => {
+    expect(isSpaDocumentPath("/join/87MDB", false)).toBe(true);
+    expect(isSpaDocumentPath("/join/87mdb/", false)).toBe(true);
+    expect(isSpaDocumentPath("/api/rooms/87MDB/preview", false)).toBe(false);
+    expect(isSpaDocumentPath("/ws/87MDB", false)).toBe(false);
+    expect(isSpaDocumentPath("/media/questions/example", false)).toBe(false);
+  });
+
+  it("routes production invite navigation through the Worker SPA fallback", () => {
+    const config = JSON.parse(readFileSync(new URL("../../wrangler.jsonc", import.meta.url), "utf8")) as {
+      assets?: { run_worker_first?: string[] };
+    };
+    expect(config.assets?.run_worker_first).toContain("/join/*");
   });
 
   it("preserves the response while adding X-Robots-Tag", async () => {
@@ -92,5 +110,20 @@ describe("non-indexable routes", () => {
     expect(requestedUrls).toEqual(["https://example.com/"]);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("text/html; charset=UTF-8");
+  });
+
+  it("serves the root SPA document for a refreshed invite URL", async () => {
+    const requestedUrls: string[] = [];
+    const assets = {
+      fetch: async (input: RequestInfo | URL) => {
+        const assetRequest = input instanceof Request ? input : new Request(input);
+        requestedUrls.push(assetRequest.url);
+        return new Response("<!doctype html><title>Invite</title>");
+      },
+    } as unknown as Fetcher;
+    const response = await spaDocumentResponse(new Request("https://example.com/join/87MDB"), assets);
+
+    expect(requestedUrls).toEqual(["https://example.com/"]);
+    expect(response.status).toBe(200);
   });
 });

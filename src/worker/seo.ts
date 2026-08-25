@@ -4,9 +4,17 @@ const NO_INDEX_VALUE = "noindex, nofollow";
 
 export function isNoIndexPath(pathname: string): boolean {
   return pathname === "/room" || pathname.startsWith("/room/")
+    || pathname === "/join" || pathname.startsWith("/join/")
     || pathname === "/dev" || pathname.startsWith("/dev/")
     || pathname === "/admin" || pathname.startsWith("/admin/")
     || pathname === "/api" || pathname.startsWith("/api/");
+}
+
+export function isSpaDocumentPath(pathname: string, development: boolean): boolean {
+  return /^\/room\/[A-HJ-NP-Z2-9]{5}\/?$/i.test(pathname)
+    || /^\/join\/[^/]+\/?$/i.test(pathname)
+    || /^\/admin\/question-editor\/?$/.test(pathname)
+    || (development && /^\/dev\/question-editor\/?$/.test(pathname));
 }
 
 export function withNoIndex(response: Response): Response {
@@ -24,6 +32,7 @@ export function robotsResponse(): Response {
     "User-agent: *",
     "Allow: /",
     "Disallow: /room/",
+    "Disallow: /join/",
     "Disallow: /dev/",
     "Disallow: /admin/",
     "Disallow: /api/",
