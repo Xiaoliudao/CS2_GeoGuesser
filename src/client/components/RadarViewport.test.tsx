@@ -31,9 +31,39 @@ beforeEach(() => {
   Object.defineProperty(window, "PointerEvent", { configurable: true, value: TestPointerEvent });
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("RadarViewport interactions", () => {
+  it("renders markers when a cached radar is already complete before passive effects", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 400,
+      height: 400,
+      right: 400,
+      bottom: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(400);
+
+    render(
+      <RadarViewport src="/cached-result.webp" alt="Cached result radar">
+        <RadarMarker point={{ x: 0.5, y: 0.5 }} className="result-marker correct-point" label="CORRECT" ariaLabel="Cached correct point" />
+      </RadarViewport>,
+    );
+
+    const marker = screen.getByRole("img", { name: "Cached correct point" }) as HTMLElement;
+    expect(marker.closest(".radar-marker-overlay")).toBeTruthy();
+    expect(marker.style.left).toBe("200px");
+    expect(marker.style.top).toBe("200px");
+  });
+
   it("places one precise normalized point for a short tap", () => {
     const { surface, onPointSelect } = prepareRadar();
 

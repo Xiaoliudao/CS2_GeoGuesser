@@ -2,6 +2,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -105,7 +106,7 @@ export function useRadarViewport({
     setViewport(DEFAULT_RADAR_VIEWPORT);
   }, [setViewport]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setImageReady(false);
     setViewportSize({ width: 0, height: 0 });
     reset();
