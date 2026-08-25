@@ -44,6 +44,37 @@ http://127.0.0.1:5173
 
 部分在线数据功能可能需要额外的本地环境配置。
 
+### 本地题库管理
+
+开发服务器启动后，可以打开本地题目编辑器：
+
+```text
+http://127.0.0.1:5173/dev/question-editor
+```
+
+新增题目时，在 `content/inbox/<Map>/` 中放入一张截图和一个同名的 `.txt` 文件，例如：
+
+```text
+content/inbox/Mirage/mirage-01.jpg
+content/inbox/Mirage/mirage-01.txt
+```
+
+metadata 文件至少需要包含地图和 CS2 控制台坐标：
+
+```text
+map=mirage
+setpos_exact -2331.545654 -477.949829 -63.248474;
+setang_exact -13.700989 -145.679047 0.000000
+```
+
+然后生成本地预览：
+
+```bash
+npm run questions:import-inbox -- --dry-run
+```
+
+刷新题目编辑器后，即可检查截图、调整答案位置并保存修改。部分发布功能可能需要额外的本地环境配置。
+
 ## 开发检查
 
 ```bash
