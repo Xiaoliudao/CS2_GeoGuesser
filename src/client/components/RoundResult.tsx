@@ -22,6 +22,7 @@ export function RoundResult({ room, playerId }: { room: GameRoomState; playerId:
           const guessedMap = player.mapGuess ? getMap(player.mapGuess).name : "No guess";
           const distance = player.distance === null ? null : `${(player.distance * 100).toFixed(1)}%`;
           const layer = player.layerGuess?.toUpperCase() ?? "—";
+          const timeBonus = player.timeBonus ?? 0;
           return (
             <article className={player.playerId === playerId ? "is-me" : ""} key={player.playerId}>
               <header><strong>{player.nickname}</strong>{player.playerId === playerId && <small>YOU</small>}</header>
@@ -31,8 +32,9 @@ export function RoundResult({ room, playerId }: { room: GameRoomState; playerId:
                 <div><dt>DISTANCE</dt><dd>{distance ?? (player.submitted ? "WRONG MAP" : "—")}</dd></div>
                 <div><dt>LOCATION SCORE</dt><dd>+{player.locationScore}</dd></div>
                 <div><dt>TIME</dt><dd>{player.elapsedMs === null ? "—" : `${(player.elapsedMs / 1000).toFixed(1)}s`}</dd></div>
+                <div><dt>TIME BONUS</dt><dd>+{timeBonus.toLocaleString(undefined, { maximumFractionDigits: 3 })}</dd></div>
               </dl>
-              <b className="round-points">+{player.points}</b>
+              <b className="round-points">+{player.points.toLocaleString(undefined, { maximumFractionDigits: 3 })}</b>
             </article>
           );
         })}

@@ -15,12 +15,11 @@ import type {
 import type { Env } from "../env";
 import { toPublicQuestion, type ServerQuestion } from "../game/questions";
 import { validateGuess } from "../game/roomState";
-import { scoreGuess } from "../game/scoring";
+import { ROUND_DURATION_MS, scoreGuess } from "../game/scoring";
 import { QuestionRepository } from "../questions/QuestionRepository";
 
 const STATE_KEY = "room-state";
 const TOTAL_ROUNDS = 5;
-const ROUND_DURATION_MS = 20_000;
 const RESULT_DURATION_MS = 5_000;
 const DISCONNECT_GRACE_MS = 30_000;
 
@@ -43,6 +42,7 @@ interface StoredGuess {
   mapCorrect: boolean;
   distance: number | null;
   locationScore: number;
+  timeBonus?: number;
   points: number;
 }
 
@@ -462,6 +462,7 @@ export class GameRoom extends DurableObject<Env> {
         mapCorrect: guess?.mapCorrect ?? false,
         distance: guess?.distance ?? null,
         locationScore: guess?.locationScore ?? 0,
+        timeBonus: guess?.timeBonus ?? 0,
         elapsedMs: guess?.elapsedMs ?? null,
         points: guess?.points ?? 0,
       };

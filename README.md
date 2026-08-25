@@ -97,7 +97,7 @@ GitHub Actions 会幂等创建该 Access application，并把 `ACCESS_AUD`、`AC
 
 协议提交 `{ mapId, layerId, point: { x, y } }`。服务端验证地图与层的组合。Nuke 和当前具有多层 overview 的 Train 使用从 `verticalsections` 提取的真实高度区间选择 `upper` / `lower`，不会用硬编码的猜测阈值。
 
-计分：地图错误 0；地图正确 200；楼层也正确时按归一化欧氏距离最多再得 800。进行中的公开状态只包含 opaque 题目 ID 和相对媒体 URL；答案从 D1 读取后只快照在 Durable Object 私有状态中，回合结束后才公开正确地图、楼层和点。legacy manifest 不会打入 Worker 或客户端 bundle。
+计分：地图错误 0；地图正确 200；楼层也正确时按归一化欧氏距离最多再得 800，并按 Durable Object 记录的服务端提交用时获得最多 100 时间奖励。时间奖励在 20 秒内线性降至 0，错误地图或错误楼层没有时间奖励；因此地图和距离相同时，用时更短的一方得分更高。进行中的公开状态只包含 opaque 题目 ID 和相对媒体 URL；答案从 D1 读取后只快照在 Durable Object 私有状态中，回合结束后才公开正确地图、楼层和点。legacy manifest 不会打入 Worker 或客户端 bundle。
 
 ## Cloudflare
 

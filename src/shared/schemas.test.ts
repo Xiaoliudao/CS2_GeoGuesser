@@ -35,4 +35,11 @@ describe("normalized point validation", () => {
     expect(clientEventSchema.safeParse({ ...event, payload: { ...event.payload, layerId: "lower" } }).success).toBe(false);
     expect(clientEventSchema.safeParse({ ...event, payload: { ...event.payload, mapId: "nuke", layerId: "lower" } }).success).toBe(true);
   });
+
+  it("does not accept client-provided timing as part of a guess", () => {
+    expect(clientEventSchema.parse({
+      ...event,
+      payload: { ...event.payload, elapsedMs: 0, submittedAt: 0 },
+    })).toEqual(event);
+  });
 });

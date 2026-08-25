@@ -34,6 +34,7 @@ export interface PlayerRoundResult {
   mapCorrect: boolean;
   distance: number | null;
   locationScore: number;
+  timeBonus?: number;
   elapsedMs: number | null;
   points: number;
 }
