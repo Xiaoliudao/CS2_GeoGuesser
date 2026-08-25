@@ -9,7 +9,15 @@ import {
   type ServerRegion,
 } from "../../shared/roomSettings";
 import { navigate } from "../App";
-import { MatchSettingsPanel } from "../components/MatchSettingsPanel";
+import {
+  MATCH_SETTINGS_AVAILABILITY_ID,
+  MATCH_SETTINGS_DETAILS_ID,
+  MATCH_SETTINGS_DURATION_INPUT_ID,
+  MATCH_SETTINGS_MAP_POOL_ID,
+  MATCH_SETTINGS_ROUNDS_INPUT_ID,
+  MATCH_SETTINGS_REGION_ID,
+  MatchSettingsPanel,
+} from "../components/MatchSettingsPanel";
 import { getNickname, getPlayerId, saveNickname } from "../lib/identity";
 
 const CREATE_ROOM_ERROR_MESSAGES: Record<string, string> = {
@@ -21,11 +29,21 @@ const CREATE_ROOM_ERROR_MESSAGES: Record<string, string> = {
   INVALID_SERVER_REGION: "The server region selection is invalid.",
 };
 
+function settingsTargetForErrorCode(errorCode: string): string {
+  if (errorCode === "INVALID_ROUND_COUNT") return MATCH_SETTINGS_ROUNDS_INPUT_ID;
+  if (errorCode === "INVALID_ROUND_DURATION") return MATCH_SETTINGS_DURATION_INPUT_ID;
+  if (errorCode === "EMPTY_MAP_POOL" || errorCode === "INVALID_MAP_ID") return MATCH_SETTINGS_MAP_POOL_ID;
+  if (errorCode === "INVALID_SERVER_REGION") return MATCH_SETTINGS_REGION_ID;
+  return MATCH_SETTINGS_DETAILS_ID;
+}
+
 export function HomePage() {
   const [nickname, setNickname] = useState(getNickname);
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [settingsPanelError, setSettingsPanelError] = useState("");
   const [roundsInput, setRoundsInput] = useState(String(DEFAULT_ROOM_SETTINGS.totalRounds));
   const [durationInput, setDurationInput] = useState(String(DEFAULT_ROOM_SETTINGS.roundDurationSeconds));
   const [mapPool, setMapPool] = useState<MapId[]>([...DEFAULT_ROOM_SETTINGS.mapPool]);
@@ -96,14 +114,43 @@ export function HomePage() {
     return parsed.data;
   };
 
+  const revealSettingsIssue = (targetId: string) => {
+    setSettingsExpanded(true);
+    window.setTimeout(() => document.getElementById(targetId)?.focus(), 0);
+  };
+
   const createRoom = async () => {
     if (!validateNickname()) return;
+    setSettingsPanelError("");
     if (!settingsResult.success) {
       setError("Enter valid match settings: 1–50 rounds, 10–120 seconds, and at least one map.");
+      const issuePath = settingsResult.error.issues[0]?.path[0];
+      revealSettingsIssue(
+        issuePath === "totalRounds"
+          ? MATCH_SETTINGS_ROUNDS_INPUT_ID
+          : issuePath === "roundDurationSeconds"
+            ? MATCH_SETTINGS_DURATION_INPUT_ID
+            : issuePath === "mapPool"
+              ? MATCH_SETTINGS_MAP_POOL_ID
+              : issuePath === "serverRegion"
+                ? MATCH_SETTINGS_REGION_ID
+                : MATCH_SETTINGS_DETAILS_ID,
+      );
       return;
     }
-    if (!settingsAreAvailable) {
+    if (checkingAvailability || !availabilityIsCurrent) {
+      setError("Still checking the selected map pool. Please try again in a moment.");
+      revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
+      return;
+    }
+    if (availabilityError || currentAvailability === null) {
+      setError("The question bank is temporarily unavailable. Please try again.");
+      revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
+      return;
+    }
+    if (settingsResult.data.totalRounds > availableQuestions) {
       setError(`Only ${availableQuestions} questions are available for the selected map pool.`);
+      revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
       return;
     }
     setBusy(true);
@@ -126,17 +173,27 @@ export function HomePage() {
           setAvailability((current) => current ? { ...current, availableQuestions: currentAvailable } : current);
           setAvailabilityMapPoolKey(mapPoolKey);
           setError(`Only ${currentAvailable} questions are available for the selected map pool.`);
+          revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
           return;
         }
         if (responseData?.error === "QUESTION_DATABASE_UNAVAILABLE") {
-          setError("The question database is temporarily unavailable. Please try again.");
+          const message = "The question database is temporarily unavailable. Please try again.";
+          setError(message);
+          setSettingsPanelError(message);
+          revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
           return;
         }
         if (responseData?.error && CREATE_ROOM_ERROR_MESSAGES[responseData.error]) {
-          setError(CREATE_ROOM_ERROR_MESSAGES[responseData.error]);
+          const message = CREATE_ROOM_ERROR_MESSAGES[responseData.error];
+          setError(message);
+          setSettingsPanelError(message);
+          revealSettingsIssue(settingsTargetForErrorCode(responseData.error));
           return;
         }
-        setError("The server rejected these match settings. Review them and try again.");
+        const message = "The server rejected these match settings. Review them and try again.";
+        setError(message);
+        setSettingsPanelError(message);
+        revealSettingsIssue(MATCH_SETTINGS_DETAILS_ID);
         return;
       }
       if (!responseData?.roomCode) throw new Error("Room creation failed");
@@ -197,26 +254,40 @@ export function HomePage() {
           />
 
           <MatchSettingsPanel
+            expanded={settingsExpanded}
             roundsInput={roundsInput}
             durationInput={durationInput}
             mapPool={mapPool}
             serverRegion={serverRegion}
             availability={currentAvailability}
             checkingAvailability={checkingAvailability || !availabilityIsCurrent}
-            availabilityError={availabilityError}
-            onRoundsChange={setRoundsInput}
-            onDurationChange={setDurationInput}
-            onMapPoolChange={(nextMapPool) => setMapPool(MAP_IDS.filter((mapId) => nextMapPool.includes(mapId)))}
-            onServerRegionChange={setServerRegion}
+            availabilityError={settingsPanelError || availabilityError}
+            onToggle={() => setSettingsExpanded((expanded) => !expanded)}
+            onRoundsChange={(value) => {
+              setSettingsPanelError("");
+              setRoundsInput(value);
+            }}
+            onDurationChange={(value) => {
+              setSettingsPanelError("");
+              setDurationInput(value);
+            }}
+            onMapPoolChange={(nextMapPool) => {
+              setSettingsPanelError("");
+              setMapPool(MAP_IDS.filter((mapId) => nextMapPool.includes(mapId)));
+            }}
+            onServerRegionChange={(region) => {
+              setSettingsPanelError("");
+              setServerRegion(region);
+            }}
           />
 
-          <div className="match-summary" aria-label="Selected match summary">
-            <strong>{roundsInput !== "" && Number.isInteger(Number(roundsInput)) ? roundsInput : "—"} ROUNDS</strong>
-            <strong>{durationInput !== "" && Number.isInteger(Number(durationInput)) ? durationInput : "—"} SEC</strong>
-            <strong>{mapPool.length} MAP{mapPool.length === 1 ? "" : "S"}</strong>
-            <strong>{serverRegion === "asia" ? "ASIA" : "AUTO"} SERVER</strong>
-          </div>
-          <button className="primary-button" type="button" onClick={createRoom} disabled={busy || !settingsAreAvailable}>
+          <button
+            className="primary-button create-room-button"
+            type="button"
+            onClick={createRoom}
+            disabled={busy}
+            aria-disabled={busy || !settingsAreAvailable}
+          >
             {busy ? "CONNECTING…" : "CREATE ROOM"}
           </button>
 
