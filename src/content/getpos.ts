@@ -1,4 +1,4 @@
-import type { ViewAngle, WorldPosition } from "../shared/radarCoordinates";
+import type { ViewAngle, WorldPosition } from "../shared/radarCoordinates.ts";
 
 export interface ParsedGetpos {
   worldPosition: WorldPosition;

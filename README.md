@@ -126,8 +126,8 @@ CI 可改用权限最小化的 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID
 ```text
 scripts/content/radar-sync.ts          本机优先、公开真实提取源回退的雷达同步
 scripts/content/question-import.ts     截图、getpos、坐标、R2、D1
-scripts/content/questions-import-inbox.ts  inbox 批量验证、去重、pending/发布
-scripts/content/questions-publish-pending.ts  批量发布已批准的 pending 题目
+scripts/content/questions-import-inbox.ts  递归 inbox 验证、预览 manifest、去重
+scripts/content/questions-publish-pending.ts  批量发布所有已验证的新题或旧 pending 题目
 scripts/content/questions-d1-cli.ts    D1 migration/list/enable/disable/update/export
 scripts/content/assets-upload.ts       SHA-256 增量 R2 上传
 src/shared/radarCoordinates.ts         world → radar 与楼层选择

@@ -172,9 +172,23 @@ export function getRemoteCatalogMeta(): RemoteCatalogMeta {
 
 export function insertRemoteQuestion(input: RemoteQuestionInput): { inserted: boolean; row: RemoteQuestionRow } {
   const existingById = getRemoteQuestion(input.question.id);
-  if (existingById) return { inserted: false, row: existingById };
   const existingByHash = getRemoteQuestionByContentHash(input.contentHash);
-  if (existingByHash) return { inserted: false, row: existingByHash };
+  const existingByPreview = input.sourcePreviewId
+    ? getRemoteQuestionByPreviewId(input.sourcePreviewId)
+    : null;
+  if (existingById && existingById.content_hash !== input.contentHash) {
+    throw new Error(`QUESTION_ID_CONFLICT ${input.question.id}`);
+  }
+  if (existingByPreview) {
+    if (existingByPreview.content_hash !== input.contentHash) {
+      throw new Error(`SOURCE_PREVIEW_ID_CONFLICT ${input.sourcePreviewId}`);
+    }
+  }
+  if (existingByHash && existingByPreview && existingByHash.id !== existingByPreview.id) {
+    throw new Error(`D1_DUPLICATE_IDENTITY_CONFLICT ${input.sourcePreviewId}`);
+  }
+  const existing = existingByHash ?? existingByPreview ?? existingById;
+  if (existing) return { inserted: false, row: existing };
 
   const now = new Date().toISOString();
   const question = input.question;
@@ -214,7 +228,9 @@ export function insertRemoteQuestion(input: RemoteQuestionInput): { inserted: bo
     WHERE id = 1 AND changes() = 1;
   `);
 
-  const row = getRemoteQuestion(question.id) ?? getRemoteQuestionByContentHash(input.contentHash);
+  const row = getRemoteQuestion(question.id)
+    ?? getRemoteQuestionByContentHash(input.contentHash)
+    ?? (input.sourcePreviewId ? getRemoteQuestionByPreviewId(input.sourcePreviewId) : null);
   if (!row) throw new Error(`D1_INSERT_NOT_CONFIRMED ${question.id}`);
   return { inserted: row.id === question.id, row };
 }

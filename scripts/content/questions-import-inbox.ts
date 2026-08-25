@@ -2,7 +2,14 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import sharp from "sharp";
-import { InboxImportError, isDuplicateImageHash, matchInboxFiles, parseInboxMetadata } from "../../src/content/questionInbox";
+import {
+  InboxImportError,
+  hasUsableQuestionImageDimensions,
+  isDuplicateImageHash,
+  matchInboxFiles,
+  parseInboxMetadata,
+  validateInboxFolderMap,
+} from "../../src/content/questionInbox";
 import { radarPreviewUrl, screenshotPreviewUrl, type PreviewQuestion } from "../../src/content/questionPreview";
 import { copyQuestionPreviewAsset, writeQuestionPreviewManifests } from "../../src/content/questionPreviewWriter";
 import type { MapId, RadarLayerId } from "../../src/shared/maps";
@@ -21,6 +28,16 @@ function sourceHash(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function listInboxFiles(path: string): string[] {
+  if (!existsSync(path)) return [];
+  return readdirSync(path, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = join(path, entry.name);
+      if (entry.isDirectory()) return listInboxFiles(entryPath);
+      return entry.isFile() ? [entryPath] : [];
+    });
+}
+
 function failureCode(error: unknown): string {
   if (error instanceof InboxImportError) return error.code;
   if (error instanceof Error && error.message.startsWith("MISSING_OVERVIEW")) return "MISSING_OVERVIEW";
@@ -30,47 +47,54 @@ function failureCode(error: unknown): string {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-  const paths = existsSync(inboxRoot) ? readdirSync(inboxRoot).map((name) => join(inboxRoot, name)) : [];
-  const matched = matchInboxFiles(paths);
+  const paths = listInboxFiles(inboxRoot);
+  const matched = matchInboxFiles(paths, inboxRoot);
   const overviewDocument = readJson<{ maps?: Partial<Record<MapId, MapOverview>> }>(overviewPath, {});
   const records = loadImportRecords();
   const previewQuestions: PreviewQuestion[] = [];
+  const found = matched.pairs.length + matched.failures.length;
+  let valid = 0;
   let imported = 0;
   let prepared = 0;
   let skipped = 0;
   let failed = matched.failures.length;
 
-  for (const missing of matched.failures) console.error(`FAILED ${missing.id} ${missing.code}`);
+  for (const missing of matched.failures) console.error(`FAILED ${missing.relativeSourcePath} ${missing.code}`);
 
   for (const pair of matched.pairs) {
     try {
       const metadata = parseInboxMetadata(readFileSync(pair.metadataPath, "utf8"));
+      validateInboxFolderMap(pair, metadata.mapId);
       const overview = overviewDocument.maps?.[metadata.mapId];
       if (!overview) throw new InboxImportError("MISSING_OVERVIEW", `No synchronized overview for ${metadata.mapId}. Run npm run radar:sync.`);
       const automaticLayer = selectRadarLayer(metadata.worldPosition, overview);
       const automaticPoint = worldToRadarPoint(metadata.worldPosition, overview, automaticLayer);
       const hash = sourceHash(pair.imagePath);
       const imageMetadata = await sharp(pair.imagePath, { failOn: "error" }).metadata();
-      if (!imageMetadata.width || !imageMetadata.height || imageMetadata.width < 640 || imageMetadata.height < 360) {
-        throw new Error("REAL SCREENSHOT REQUIRED at 640x360 or larger.");
+      if (!hasUsableQuestionImageDimensions(imageMetadata.width, imageMetadata.height)) {
+        throw new Error("REAL SCREENSHOT REQUIRED at 320x240 or larger.");
       }
       const sourceFile = basename(pair.imagePath);
       const previewQuestion: PreviewQuestion = {
         previewId: pair.id,
+        ...(pair.legacyId !== pair.id ? { legacyPreviewId: pair.legacyId } : {}),
         sourceFile,
+        relativeSourcePath: pair.relativeSourcePath,
+        sourceImageSha256: hash,
         mapId: metadata.mapId,
         layerId: automaticLayer.id as RadarLayerId,
         worldPosition: metadata.worldPosition,
         ...(metadata.viewAngle ? { viewAngle: metadata.viewAngle } : {}),
         automaticPoint,
-        screenshotUrl: screenshotPreviewUrl(sourceFile),
+        screenshotUrl: screenshotPreviewUrl(pair.relativeSourcePath),
         radarUrl: radarPreviewUrl(metadata.mapId, automaticLayer.id as RadarLayerId),
         coordinateSource: "world-conversion",
       };
 
-      console.log(`VALID file=${sourceFile} map=${metadata.mapId} world=${metadata.worldPosition.x},${metadata.worldPosition.y},${metadata.worldPosition.z} layer=${automaticLayer.id} point=${automaticPoint.x.toFixed(6)},${automaticPoint.y.toFixed(6)}`);
+      valid += 1;
+      console.log(`VALID ${pair.relativeSourcePath} map=${metadata.mapId} world=${metadata.worldPosition.x},${metadata.worldPosition.y},${metadata.worldPosition.z} layer=${automaticLayer.id} point=${automaticPoint.x.toFixed(6)},${automaticPoint.y.toFixed(6)}`);
       if (dryRun) {
-        copyQuestionPreviewAsset(pair.imagePath, publicDevAssetsRoot);
+        copyQuestionPreviewAsset(pair.imagePath, publicDevAssetsRoot, pair.relativeSourcePath);
         previewQuestions.push(previewQuestion);
         continue;
       }
@@ -90,7 +114,11 @@ async function main() {
       }
     } catch (error) {
       failed += 1;
-      console.error(`FAILED ${pair.id} ${failureCode(error)} ${error instanceof Error ? error.message : String(error)}`);
+      const code = failureCode(error);
+      if (code === "FOLDER_MAP_MISMATCH") {
+        console.warn(`WARNING ${pair.relativeSourcePath} FOLDER_MAP_MISMATCH ${error instanceof Error ? error.message : String(error)}`);
+      }
+      console.error(`FAILED ${pair.relativeSourcePath} ${code} ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -99,7 +127,16 @@ async function main() {
     console.log(`QUESTION_PREVIEW_READY ${publicPreviewManifestPath}`);
   }
 
-  console.log(["QUESTION_INBOX_COMPLETE", `Imported: ${imported}`, `Prepared: ${prepared}`, `Skipped: ${skipped}`, `Failed: ${failed}`, ...(dryRun ? ["DryRun: true"] : [])].join("\n"));
+  console.log([
+    "QUESTION_INBOX_COMPLETE",
+    `Found: ${found}`,
+    `Valid: ${valid}`,
+    `Imported: ${imported}`,
+    `Prepared: ${prepared}`,
+    `Skipped: ${skipped}`,
+    `Failed: ${failed}`,
+    ...(dryRun ? ["DryRun: true"] : []),
+  ].join("\n"));
   if (!dryRun && prepared > 0) console.log("PUBLISH_PENDING_R2: QA results and prepared assets were preserved without exposing secret values.");
   if (failed > 0) process.exitCode = 1;
 }

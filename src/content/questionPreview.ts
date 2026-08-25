@@ -4,7 +4,10 @@ import type { ViewAngle, WorldPosition } from "../shared/radarCoordinates.ts";
 
 export interface PreviewQuestion {
   previewId: string;
+  legacyPreviewId?: string;
   sourceFile: string;
+  relativeSourcePath: string;
+  sourceImageSha256: string;
   mapId: MapId;
   layerId: RadarLayerId;
   worldPosition: WorldPosition;
@@ -30,8 +33,14 @@ export interface QaPreviewQuestion extends PreviewQuestion {
 
 export type QuestionOverrideMap = Record<string, MapPoint>;
 
-export function screenshotPreviewUrl(sourceFile: string): string {
-  return `/__dev_assets__/questions/${encodeURIComponent(sourceFile)}`;
+export function screenshotPreviewUrl(relativeSourcePath: string): string {
+  const encodedPath = relativeSourcePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `/__dev_assets__/questions/${encodedPath}`;
 }
 
 export function radarPreviewUrl(mapId: MapId, layerId: RadarLayerId): string {

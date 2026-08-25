@@ -18,14 +18,17 @@ afterEach(() => {
 });
 
 const question: PreviewQuestion = {
-  previewId: "mirage-01",
+  previewId: "mirage/mirage-01",
+  legacyPreviewId: "mirage-01",
   sourceFile: "mirage-01.jpg",
+  relativeSourcePath: "Mirage/mirage-01.jpg",
+  sourceImageSha256: "a".repeat(64),
   mapId: "mirage",
   layerId: "main",
   worldPosition: { x: 1365.081055, y: -5.346069, z: -167.96875 },
   viewAngle: { pitch: 0, yaw: 49.440536, roll: 0 },
   automaticPoint: { x: 0.8974767685546875, y: 0.3356144666015625 },
-  screenshotUrl: screenshotPreviewUrl("mirage-01.jpg"),
+  screenshotUrl: screenshotPreviewUrl("Mirage/mirage-01.jpg"),
   radarUrl: radarPreviewUrl("mirage", "main"),
   coordinateSource: "world-conversion",
 };
@@ -48,11 +51,11 @@ describe("development question previews", () => {
     const radar = join(root, "main.webp");
     writeFileSync(screenshot, "real screenshot fixture");
     writeFileSync(radar, "real radar fixture");
-    expect(copyQuestionPreviewAsset(screenshot, join(root, "public", "__dev_assets__")))
-      .toBe(join(root, "public", "__dev_assets__", "questions", "mirage-01.jpg"));
+    expect(copyQuestionPreviewAsset(screenshot, join(root, "public", "__dev_assets__"), "Mirage/mirage-01.jpg"))
+      .toBe(join(root, "public", "__dev_assets__", "questions", "Mirage", "mirage-01.jpg"));
     expect(copyRadarPreviewAsset(radar, join(root, "public", "__dev_assets__"), "mirage", "main"))
       .toBe(join(root, "public", "__dev_assets__", "radars", "mirage", "main.webp"));
-    expect(screenshotPreviewUrl("mirage-01.jpg")).toBe("/__dev_assets__/questions/mirage-01.jpg");
+    expect(screenshotPreviewUrl("Mirage/mirage 01.jpg")).toBe("/__dev_assets__/questions/Mirage/mirage%2001.jpg");
     expect(radarPreviewUrl("mirage", "main")).toBe("/__dev_assets__/radars/mirage/main.webp");
   });
 
@@ -89,5 +92,7 @@ describe("development question previews", () => {
     const editorSource = readFileSync(resolve(import.meta.dirname, "..", "client", "pages", "QuestionEditorPage.tsx"), "utf8");
     expect(editorSource).not.toContain("query-preview");
     expect(editorSource).not.toContain('automaticPoint: { x: 0, y: 0 }');
+    expect(editorSource).toContain("<optgroup");
+    expect(editorSource).toContain("question.relativeSourcePath");
   });
 });

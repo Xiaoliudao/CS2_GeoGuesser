@@ -40,7 +40,12 @@ export function questionDevServerPlugin(): Plugin {
           try {
             const published = listRemoteQuestions();
             const publishedSources = new Set(published.map((question) => question.source_preview_id).filter(Boolean));
-            const questions = listQaPreviewQuestions().filter((question) => !publishedSources.has(question.previewId));
+            const publishedHashes = new Set(published.map((question) => question.content_hash).filter(Boolean));
+            const questions = listQaPreviewQuestions().filter((question) => (
+              question.status !== "published"
+              && !publishedSources.has(question.previewId)
+              && !publishedHashes.has(question.sourceImageSha256)
+            ));
             sendJson(response, 200, { questions, published });
           } catch (error) {
             sendJson(response, 503, {

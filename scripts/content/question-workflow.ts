@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import sharp from "sharp";
 import {
   getFinalQuestionPoint,
@@ -13,11 +13,14 @@ import {
 } from "../../src/content/questionPreview.ts";
 import type { MapId } from "../../src/shared/maps.ts";
 import type { MapPoint } from "../../src/shared/types.ts";
+import { hasUsableQuestionImageDimensions } from "../../src/content/questionInbox.ts";
 import type { ManifestQuestion } from "./question-manifest.ts";
 import {
   getRemoteQuestion,
   getRemoteQuestionByContentHash,
+  getRemoteQuestionByPreviewId,
   insertRemoteQuestion,
+  type RemoteQuestionRow,
   runWrangler,
   verifyRemoteR2Object,
 } from "./question-d1-admin.ts";
@@ -44,6 +47,7 @@ export interface PendingQuestion {
 export interface PublishResult {
   status: "publish-pending" | "published";
   questionId: string;
+  disposition?: "created" | "already-published";
   message?: string;
 }
 
@@ -74,6 +78,52 @@ function loadPreviewManifest(): QuestionPreviewManifest {
   return readJson<QuestionPreviewManifest>(previewManifestPath, { generatedAt: "", questions: [] });
 }
 
+export function previewIdentityAliases(
+  preview: PreviewQuestion,
+  previews: readonly PreviewQuestion[],
+): string[] {
+  const aliases = [preview.previewId];
+  const legacyPreviewId = preview.legacyPreviewId;
+  if (
+    legacyPreviewId
+    && legacyPreviewId !== preview.previewId
+    && previews.filter((candidate) => candidate.legacyPreviewId === legacyPreviewId || candidate.previewId === legacyPreviewId).length === 1
+  ) {
+    aliases.push(legacyPreviewId);
+  }
+  return aliases;
+}
+
+function recordMatchesPreview(
+  record: Pick<ImportRecord, "sourceId" | "sourceImageSha256">,
+  preview: PreviewQuestion,
+  previews: readonly PreviewQuestion[],
+): boolean {
+  return record.sourceImageSha256 === preview.sourceImageSha256
+    || previewIdentityAliases(preview, previews).includes(record.sourceId);
+}
+
+function pendingMatchesPreview(
+  pending: Pick<PendingQuestion, "sourceId" | "sourceImageSha256">,
+  preview: PreviewQuestion,
+  previews: readonly PreviewQuestion[],
+): boolean {
+  return pending.sourceImageSha256 === preview.sourceImageSha256
+    || previewIdentityAliases(preview, previews).includes(pending.sourceId);
+}
+
+function overrideEntryFor(
+  preview: PreviewQuestion,
+  previews: readonly PreviewQuestion[],
+  overrides: QuestionOverrideMap,
+): { key: string; point: MapPoint } | null {
+  for (const key of previewIdentityAliases(preview, previews)) {
+    const point = overrides[key];
+    if (point) return { key, point };
+  }
+  return null;
+}
+
 export function loadQuestionOverrides(): QuestionOverrideMap {
   return readJson<QuestionOverrideMap>(overridesPath, {});
 }
@@ -86,10 +136,16 @@ export function loadImportRecords(): ImportRecord[] {
   return readJson<ImportRecord[]>(recordsPath, []);
 }
 
-function qaQuestionFor(preview: PreviewQuestion): QaPreviewQuestion {
-  const override = loadQuestionOverrides()[preview.previewId];
-  const pending = loadPendingQuestions().some((item) => item.sourceId === preview.previewId);
-  const published = loadImportRecords().some((item) => item.sourceId === preview.previewId);
+function qaQuestionFor(
+  preview: PreviewQuestion,
+  previews: readonly PreviewQuestion[],
+  overrides: QuestionOverrideMap,
+  pendingQuestions: readonly PendingQuestion[],
+  records: readonly ImportRecord[],
+): QaPreviewQuestion {
+  const override = overrideEntryFor(preview, previews, overrides)?.point;
+  const pending = pendingQuestions.some((item) => pendingMatchesPreview(item, preview, previews));
+  const published = records.some((item) => recordMatchesPreview(item, preview, previews));
   return {
     ...preview,
     ...(override ? { manualOverride: override } : {}),
@@ -99,18 +155,27 @@ function qaQuestionFor(preview: PreviewQuestion): QaPreviewQuestion {
 }
 
 export function listQaPreviewQuestions(): QaPreviewQuestion[] {
-  return loadPreviewManifest().questions.map(qaQuestionFor);
+  const previews = loadPreviewManifest().questions;
+  const overrides = loadQuestionOverrides();
+  const pending = loadPendingQuestions();
+  const records = loadImportRecords();
+  return previews.map((preview) => qaQuestionFor(preview, previews, overrides, pending, records));
 }
 
 function requirePreview(previewId: string): PreviewQuestion {
-  const preview = loadPreviewManifest().questions.find((question) => question.previewId === previewId);
+  const previews = loadPreviewManifest().questions;
+  const exact = previews.find((question) => question.previewId === previewId);
+  const legacyMatches = previews.filter((question) => question.legacyPreviewId === previewId);
+  const preview = exact ?? (legacyMatches.length === 1 ? legacyMatches[0] : undefined);
+  if (!exact && legacyMatches.length > 1) throw new Error(`AMBIGUOUS_PREVIEW ${previewId}`);
   if (!preview) throw new Error(`UNKNOWN_PREVIEW ${previewId}`);
   return preview;
 }
 
 function updatePendingPoint(preview: PreviewQuestion, manualOverride?: MapPoint): void {
+  const previews = loadPreviewManifest().questions;
   const pending = loadPendingQuestions();
-  const index = pending.findIndex((item) => item.sourceId === preview.previewId);
+  const index = pending.findIndex((item) => pendingMatchesPreview(item, preview, previews));
   if (index < 0) return;
   const item = pending[index];
   item.question = {
@@ -124,17 +189,21 @@ function updatePendingPoint(preview: PreviewQuestion, manualOverride?: MapPoint)
 
 export function saveQuestionOverride(previewId: string, point: MapPoint | null): QaPreviewQuestion {
   const preview = requirePreview(previewId);
-  if (loadImportRecords().some((item) => item.sourceId === previewId)) throw new Error("PUBLISHED_QUESTION_IS_IMMUTABLE");
+  const previews = loadPreviewManifest().questions;
+  if (loadImportRecords().some((item) => recordMatchesPreview(item, preview, previews))) {
+    throw new Error("PUBLISHED_QUESTION_IS_IMMUTABLE");
+  }
   let overrides = loadQuestionOverrides();
+  const overrideKey = overrideEntryFor(preview, previews, overrides)?.key ?? preview.previewId;
   if (point === null) {
-    overrides = updateQuestionOverrides(overrides, previewId, null);
+    overrides = updateQuestionOverrides(overrides, overrideKey, null);
     updatePendingPoint(preview);
   } else {
-    overrides = updateQuestionOverrides(overrides, previewId, point);
+    overrides = updateQuestionOverrides(overrides, overrideKey, point);
     updatePendingPoint(preview, point);
   }
   writeJson(overridesPath, overrides);
-  return qaQuestionFor(preview);
+  return qaQuestionFor(preview, previews, overrides, loadPendingQuestions(), loadImportRecords());
 }
 
 export function hasCloudflareAuth(): boolean {
@@ -150,42 +219,55 @@ function uploadPreparedQuestion(path: string, assetId: string): void {
   if (result.status !== 0) throw new Error(`R2_UPLOAD_FAILED ${key}`);
 }
 
-function recordPublishedQuestion(entry: PendingQuestion): void {
+function imageAssetIdFromKey(imageAssetKey: string): string {
+  return basename(imageAssetKey, extname(imageAssetKey));
+}
+
+function recordPublishedQuestion(entry: PendingQuestion, remote?: RemoteQuestionRow): void {
   const records = loadImportRecords();
   if (!records.some((record) => record.sourceImageSha256 === entry.sourceImageSha256)) {
     records.push({
       sourceId: entry.sourceId,
       sourceImageSha256: entry.sourceImageSha256,
       sourceImageName: entry.sourceImageName,
-      questionId: entry.question.id,
-      imageAssetId: entry.question.imageAssetId,
+      questionId: remote?.id ?? entry.question.id,
+      imageAssetId: remote ? imageAssetIdFromKey(remote.image_asset_key) : entry.question.imageAssetId,
       importedAt: new Date().toISOString(),
-      mapId: entry.question.correctMapId,
+      mapId: (remote?.map_id as MapId | undefined) ?? entry.question.correctMapId,
     });
     writeJson(recordsPath, records);
   }
-  writeJson(pendingPath, loadPendingQuestions().filter((item) => item.sourceId !== entry.sourceId));
+  writeJson(
+    pendingPath,
+    loadPendingQuestions().filter((item) => (
+      item.sourceId !== entry.sourceId && item.sourceImageSha256 !== entry.sourceImageSha256
+    )),
+  );
 }
 
-export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePath = join(inboxRoot, preview.sourceFile)): Promise<PendingQuestion> {
-  if (basename(preview.sourceFile) !== preview.sourceFile || !existsSync(sourcePath)) throw new Error("PREVIEW_SCREENSHOT_NOT_FOUND");
-  const metadata = await sharp(sourcePath, { failOn: "error" }).metadata();
-  if (!metadata.width || !metadata.height || metadata.width < 640 || metadata.height < 360) throw new Error("INVALID_PREVIEW_SCREENSHOT");
-  const hash = sourceHash(sourcePath);
-  const duplicateRecord = loadImportRecords().find((record) => record.sourceImageSha256 === hash && record.sourceId !== preview.previewId);
-  if (duplicateRecord) throw new Error(`DUPLICATE_IMAGE_HASH ${duplicateRecord.sourceId}`);
+export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePath?: string): Promise<PendingQuestion> {
+  const resolvedSourcePath = resolve(sourcePath ?? join(inboxRoot, ...preview.relativeSourcePath.replaceAll("\\", "/").split("/")));
+  const relativeSource = relative(resolve(inboxRoot), resolvedSourcePath);
+  if (relativeSource.startsWith("..") || isAbsolute(relativeSource) || !existsSync(resolvedSourcePath)) {
+    throw new Error("PREVIEW_SCREENSHOT_NOT_FOUND");
+  }
+  const metadata = await sharp(resolvedSourcePath, { failOn: "error" }).metadata();
+  if (!hasUsableQuestionImageDimensions(metadata.width, metadata.height)) throw new Error("INVALID_PREVIEW_SCREENSHOT");
+  const hash = sourceHash(resolvedSourcePath);
+  if (hash !== preview.sourceImageSha256) throw new Error("PREVIEW_SOURCE_CHANGED_RERUN_DRY_RUN");
+  const previews = loadPreviewManifest().questions;
   const pending = loadPendingQuestions();
-  const existing = pending.find((item) => item.sourceId === preview.previewId || item.sourceImageSha256 === hash);
+  const existing = pending.find((item) => pendingMatchesPreview(item, preview, previews));
   const imageAssetId = existing?.question.imageAssetId ?? randomUUID().replaceAll("-", "");
   const questionId = existing?.question.id ?? `q-${randomUUID().replaceAll("-", "").slice(0, 16)}`;
   const output = join(preparedQuestionsRoot, `${imageAssetId}.webp`);
   mkdirSync(dirname(output), { recursive: true });
-  if (!existsSync(output)) await sharp(sourcePath).rotate().webp({ quality: 88, effort: 6 }).toFile(output);
-  const manualOverride = loadQuestionOverrides()[preview.previewId];
+  if (!existsSync(output)) await sharp(resolvedSourcePath).rotate().webp({ quality: 88, effort: 6 }).toFile(output);
+  const manualOverride = overrideEntryFor(preview, previews, loadQuestionOverrides())?.point;
   const entry: PendingQuestion = {
     sourceId: preview.previewId,
     sourceImageSha256: hash,
-    sourceImageName: preview.sourceFile,
+    sourceImageName: preview.relativeSourcePath,
     generatedImage: relative(projectRoot, output).replaceAll("\\", "/"),
     approvedAt: existing?.approvedAt ?? new Date().toISOString(),
     question: {
@@ -200,7 +282,7 @@ export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePat
       coordinateSource: manualOverride ? "manual-override" : "world-conversion",
     },
   };
-  const index = pending.findIndex((item) => item.sourceId === preview.previewId || item.sourceImageSha256 === hash);
+  const index = pending.findIndex((item) => pendingMatchesPreview(item, preview, previews));
   if (index >= 0) pending[index] = entry;
   else pending.push(entry);
   writeJson(pendingPath, pending);
@@ -215,16 +297,22 @@ export function publishPreparedQuestion(entry: PendingQuestion): PublishResult {
   const relativeOutput = relative(resolve(preparedQuestionsRoot), output);
   if (relativeOutput.startsWith("..") || isAbsolute(relativeOutput) || !existsSync(output)) throw new Error("INVALID_PREPARED_QUESTION_PATH");
   const imageAssetKey = `questions/${entry.question.imageAssetId}.webp`;
+  let disposition: PublishResult["disposition"] = "already-published";
   try {
     const existingById = getRemoteQuestion(entry.question.id);
     const existingByHash = getRemoteQuestionByContentHash(entry.sourceImageSha256);
-    if (existingByHash && existingByHash.id !== entry.question.id) {
-      throw new Error(`DUPLICATE_CONTENT_HASH ${existingByHash.id}`);
-    }
+    const existingByPreview = getRemoteQuestionByPreviewId(entry.sourceId);
     if (existingById && existingById.content_hash !== entry.sourceImageSha256) {
       throw new Error(`QUESTION_ID_CONFLICT ${entry.question.id}`);
     }
-    if (!existingById) {
+    if (existingByPreview && existingByPreview.content_hash !== entry.sourceImageSha256) {
+      throw new Error(`SOURCE_PREVIEW_ID_CONFLICT ${entry.sourceId}`);
+    }
+    if (existingByHash && existingByPreview && existingByHash.id !== existingByPreview.id) {
+      throw new Error(`D1_DUPLICATE_IDENTITY_CONFLICT ${entry.sourceId}`);
+    }
+    const existing = existingByHash ?? existingByPreview ?? existingById;
+    if (!existing) {
       uploadPreparedQuestion(output, entry.question.imageAssetId);
       verifyRemoteR2Object(bucket, imageAssetKey);
       const result = insertRemoteQuestion({
@@ -236,9 +324,11 @@ export function publishPreparedQuestion(entry: PendingQuestion): PublishResult {
       if (result.row.id !== entry.question.id || result.row.image_asset_key !== imageAssetKey) {
         throw new Error(`D1_PUBLISH_CONFIRMATION_FAILED ${entry.question.id}`);
       }
+      disposition = result.inserted ? "created" : "already-published";
+      recordPublishedQuestion(entry, result.row);
     } else {
-      if (existingById.image_asset_key !== imageAssetKey) throw new Error(`QUESTION_ASSET_KEY_CONFLICT ${entry.question.id}`);
-      verifyRemoteR2Object(bucket, imageAssetKey);
+      verifyRemoteR2Object(bucket, existing.image_asset_key);
+      recordPublishedQuestion(entry, existing);
     }
   } catch (error) {
     return {
@@ -247,16 +337,24 @@ export function publishPreparedQuestion(entry: PendingQuestion): PublishResult {
       message: `PUBLISH_PENDING_D1_OR_R2 ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  recordPublishedQuestion(entry);
-  return { status: "published", questionId: entry.question.id };
+  const record = loadImportRecords().find((item) => item.sourceImageSha256 === entry.sourceImageSha256);
+  return { status: "published", questionId: record?.questionId ?? entry.question.id, disposition };
 }
 
 export async function publishPreviewQuestion(previewId: string): Promise<PublishResult> {
-  const alreadyPublished = loadImportRecords().find((record) => record.sourceId === previewId);
+  const preview = requirePreview(previewId);
+  const previews = loadPreviewManifest().questions;
+  const alreadyPublished = loadImportRecords().find((record) => recordMatchesPreview(record, preview, previews));
   if (alreadyPublished) {
     try {
       const remote = getRemoteQuestion(alreadyPublished.questionId);
-      if (remote) return { status: "published", questionId: alreadyPublished.questionId };
+      if (remote) {
+        return {
+          status: "published",
+          questionId: alreadyPublished.questionId,
+          disposition: "already-published",
+        };
+      }
       return {
         status: "publish-pending",
         questionId: alreadyPublished.questionId,
@@ -270,6 +368,6 @@ export async function publishPreviewQuestion(previewId: string): Promise<Publish
       };
     }
   }
-  const entry = await preparePreviewQuestion(requirePreview(previewId));
+  const entry = await preparePreviewQuestion(preview);
   return publishPreparedQuestion(entry);
 }

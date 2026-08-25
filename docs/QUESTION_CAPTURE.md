@@ -20,11 +20,11 @@ npm run radar:sync
 2. 走到题目位置并调整视角，画面中不要出现地图名或位置提示。
 3. 在控制台执行 `getposcopy_exact`。命令会把包含 `setpos_exact` 与 `setang_exact` 的精确坐标复制到 Windows 剪贴板。
 4. 不要移动，立即截图，分辨率至少 640×360。
-5. 在项目的 `content\inbox` 中放入同名文件。例如：
+5. 在项目的 `content\inbox` 中按地图目录放入同名文件。例如：
 
 ```text
-content\inbox\mirage-001.png
-content\inbox\mirage-001.txt
+content\inbox\Mirage\mirage-001.png
+content\inbox\Mirage\mirage-001.txt
 ```
 
 `mirage-001.txt` 内容：
@@ -37,13 +37,15 @@ setang_exact -8.250000 179.500000 0.000000
 
 也接受 `map: mirage`、`de_mirage`、额外空白、换行和负小数。支持地图：mirage、inferno、ancient、nuke、anubis、dust2、train、overpass。
 
+导入器会递归扫描所有子目录，并且图片只与同目录、同 basename 的 `.txt` 配对。目录名只用于人工整理：`Mirage` / `mirage` / `MIRAGE` 会规范化为 `mirage`，`Dust2` / `Dust II` / `dust2` 会规范化为 `dust2`；答案仍以 metadata 的 `map=` 为准。目录与 metadata 不一致时会以 `FOLDER_MAP_MISMATCH` 拒绝导入。
+
 ## 3. 先 dry-run，再批量导入
 
 ```powershell
 npm run questions:import-inbox -- --dry-run
 ```
 
-dry-run 不上传 R2、不修改生产 D1。它会复制原始截图到被 Git 忽略的 `public\__dev_assets__\questions`，并生成仅供本地 QA 使用的 `content\generated\question-preview.json` 与浏览器副本。确认每项的 map、world position、自动楼层和雷达点后，先启动开发服务器：
+dry-run 不上传 R2、不修改生产 D1。它会保留相对目录结构，把原始截图复制到被 Git 忽略的 `public\__dev_assets__\questions`，并生成包含 `relativeSourcePath` 和 SHA-256 的本地 QA manifest。确认每项的 map、world position、自动楼层和雷达点后，先启动开发服务器：
 
 ```powershell
 npm run dev
@@ -61,6 +63,14 @@ http://127.0.0.1:5173/dev/question-editor
 - 点击 `RESET TO AUTOMATIC`：删除该 preview 的持久化覆盖，final answer 恢复 automaticPoint。
 - 点击 `PUBLISH QUESTION`：批准当前 final answer，生成 opaque ID 和 `content\generated\prepared-questions` 中的 WebP，并尝试上传 R2。
 
+日常批量发布所有通过 dry-run 且尚未发布的题目：
+
+```powershell
+npm run questions:publish
+```
+
+该命令先通过 source preview ID 与截图 SHA-256 跳过已发布题目，再把新题上传到 R2 并插入 D1。重复运行时不会重复上传或创建 D1 row；发布后新比赛立即可用，不需要 build、Worker deploy 或 GitHub push。
+
 如果本机没有 Cloudflare 认证，状态会变成 `PUBLISH PENDING`，不会丢失 QA 结果，也不会提前污染生产题库。需要上传时使用浏览器 OAuth，不要把 token 写入本地文件：
 
 ```powershell
@@ -71,7 +81,7 @@ npm run questions:publish-pending
 
 上传成功并确认 R2 对象存在后，工具会插入 D1 row 并递增 catalog version；状态立即变为 `PUBLISHED`。不需要 build 或 deploy。大厅会从 D1 显示真实 enabled question 数量；少于 5 道时使用实际可用轮数。
 
-也可以确认正确后用 CLI 批量批准/发布：
+也可以不用编辑器，在确认 dry-run 输出后直接运行上述 `questions:publish`。旧的一步式导入命令仍保留：
 
 ```powershell
 npm run questions:import-inbox

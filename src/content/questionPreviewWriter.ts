@@ -3,9 +3,20 @@ import { basename, dirname, join } from "node:path";
 import type { MapId, RadarLayerId } from "../shared/maps";
 import type { PreviewQuestion, QuestionPreviewManifest } from "./questionPreview";
 
-export function copyQuestionPreviewAsset(sourcePath: string, publicDevAssetsRoot: string): string {
-  const fileName = basename(sourcePath);
-  const target = join(publicDevAssetsRoot, "questions", fileName);
+function safeRelativeSegments(relativeSourcePath: string): string[] {
+  const segments = relativeSourcePath.replaceAll("\\", "/").split("/").filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+    throw new Error("INVALID_PREVIEW_ASSET_PATH");
+  }
+  return segments;
+}
+
+export function copyQuestionPreviewAsset(
+  sourcePath: string,
+  publicDevAssetsRoot: string,
+  relativeSourcePath = basename(sourcePath),
+): string {
+  const target = join(publicDevAssetsRoot, "questions", ...safeRelativeSegments(relativeSourcePath));
   mkdirSync(dirname(target), { recursive: true });
   copyFileSync(sourcePath, target);
   return target;

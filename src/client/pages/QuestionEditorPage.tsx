@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getFinalQuestionPoint, type QaPreviewQuestion, type PreviewQuestionStatus } from "../../content/questionPreview";
-import { getMap, type MapId, type RadarLayerId } from "../../shared/maps";
+import { getMap, MAPS, type MapId, type RadarLayerId } from "../../shared/maps";
 import type { ViewAngle, WorldPosition } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import { RadarPicker } from "../components/RadarPicker";
@@ -21,11 +21,13 @@ interface PublishedQaQuestion {
   view_roll: number | null;
   coordinate_source: "world-conversion" | "manual-override";
   enabled: number;
+  source_preview_id: string | null;
 }
 
 interface QaQuestion {
   key: string;
   id: string;
+  displayId: string;
   kind: "preview" | "imported";
   mapId: MapId;
   layerId: RadarLayerId;
@@ -46,21 +48,22 @@ function publishedQaQuestion(question: PublishedQaQuestion): QaQuestion {
     : { x: question.correct_x, y: question.correct_y };
   const finalPoint = { x: question.correct_x, y: question.correct_y };
   return {
-  key: `published:${question.id}`,
-  id: question.id,
-  kind: "imported",
-  mapId: question.map_id,
-  layerId: question.layer_id,
-  automaticPoint,
-  ...(question.coordinate_source === "manual-override" ? { manualOverride: finalPoint } : {}),
-  finalPoint,
-  worldPosition: { x: question.world_x ?? 0, y: question.world_y ?? 0, z: question.world_z ?? 0 },
-  ...(question.view_pitch !== null && question.view_yaw !== null
-    ? { viewAngle: { pitch: question.view_pitch, yaw: question.view_yaw, roll: question.view_roll ?? 0 } }
-    : {}),
-  coordinateSource: question.coordinate_source,
-  screenshotUrl: `/media/questions/${question.id}`,
-  status: "published",
+    key: `published:${question.id}`,
+    id: question.id,
+    displayId: question.source_preview_id?.split("/").at(-1) ?? question.id,
+    kind: "imported",
+    mapId: question.map_id,
+    layerId: question.layer_id,
+    automaticPoint,
+    ...(question.coordinate_source === "manual-override" ? { manualOverride: finalPoint } : {}),
+    finalPoint,
+    worldPosition: { x: question.world_x ?? 0, y: question.world_y ?? 0, z: question.world_z ?? 0 },
+    ...(question.view_pitch !== null && question.view_yaw !== null
+      ? { viewAngle: { pitch: question.view_pitch, yaw: question.view_yaw, roll: question.view_roll ?? 0 } }
+      : {}),
+    coordinateSource: question.coordinate_source,
+    screenshotUrl: `/media/questions/${question.id}`,
+    status: "published",
   };
 }
 
@@ -68,6 +71,7 @@ function previewQaQuestion(question: QaPreviewQuestion): QaQuestion {
   return {
     key: `preview:${question.previewId}`,
     id: question.previewId,
+    displayId: question.relativeSourcePath.replaceAll("\\", "/").split("/").at(-1)?.replace(/\.[^.]+$/, "") ?? question.previewId,
     kind: "preview",
     mapId: question.mapId,
     layerId: question.layerId,
@@ -111,6 +115,12 @@ export function QuestionEditorPage() {
   const [busy, setBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const availableQuestions = useMemo(() => previewQuestions, [previewQuestions]);
+  const questionGroups = useMemo(() => MAPS
+    .map((map) => ({
+      map,
+      questions: availableQuestions.filter((question) => question.mapId === map.id),
+    }))
+    .filter((group) => group.questions.length > 0), [availableQuestions]);
 
   useEffect(() => {
     let active = true;
@@ -202,7 +212,15 @@ export function QuestionEditorPage() {
         <section className="editor-controls">
           <label htmlFor="question-select">{selectedQuestion.kind === "preview" ? "PREVIEW QUESTION" : "IMPORTED QUESTION"}</label>
           <select id="question-select" value={selectedKey} onChange={(event) => { setSelectedKey(event.target.value); setDraftPoint(null); setActionMessage(""); }}>
-            {availableQuestions.map((question) => <option key={question.key} value={question.key}>{question.id} · {getMap(question.mapId).name} · {question.status.toUpperCase()}</option>)}
+            {questionGroups.map(({ map, questions }) => (
+              <optgroup key={map.id} label={map.name}>
+                {questions.map((question) => (
+                  <option key={question.key} value={question.key}>
+                    {map.name} / {question.displayId} · {question.status.toUpperCase()}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
           <label>MAP / LAYER</label>
           <strong>{getMap(selectedQuestion.mapId).name} · {selectedQuestion.layerId.toUpperCase()}</strong>

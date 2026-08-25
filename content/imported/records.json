@@ -88,5 +88,167 @@
     "imageAssetId": "e5393e37c18640a28db182765d9464d4",
     "importedAt": "2026-08-24T18:52:32.096Z",
     "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-11",
+    "sourceImageSha256": "7ed262d0fae6b163b5351b589115899f9eec5ebf0c21d8cc2089f482f72726ae",
+    "sourceImageName": "Mirage/mirage-11.png",
+    "questionId": "q-41d480f278404246",
+    "imageAssetId": "a0e8f338a5fe4c52a9b3dd5b656efb34",
+    "importedAt": "2026-08-25T01:59:48.589Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-12",
+    "sourceImageSha256": "ca12b07e8bbffcc41e72dde32b6e8a04da034da91152005015eaf28bd55a2958",
+    "sourceImageName": "Mirage/mirage-12.png",
+    "questionId": "q-904ff895966e41a4",
+    "imageAssetId": "75bfc8a27358440393bffc4b9719d931",
+    "importedAt": "2026-08-25T02:00:02.340Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-13",
+    "sourceImageSha256": "3d47b9459e203c33cca32aedba20e0889da9c4867a28a4f4d046fcc272a0e122",
+    "sourceImageName": "Mirage/mirage-13.png",
+    "questionId": "q-80d7a17a2e614c42",
+    "imageAssetId": "dfbb72e6a849409386f0b59b273301f4",
+    "importedAt": "2026-08-25T02:00:19.266Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-14",
+    "sourceImageSha256": "8bcde6c877e3662236eef4f92653f7b56a8afb870f838c2ee704fdb5b10cff6e",
+    "sourceImageName": "Mirage/mirage-14.png",
+    "questionId": "q-72ebe5e411fa4524",
+    "imageAssetId": "d279e76bab64466f94c313f42a817dba",
+    "importedAt": "2026-08-25T02:00:33.916Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-15",
+    "sourceImageSha256": "def6beee190ba6a4f7f18e07b3056acce905a2c49b0ba38c399d366356e9478c",
+    "sourceImageName": "Mirage/mirage-15.png",
+    "questionId": "q-a3fc7dc1e6ea44cd",
+    "imageAssetId": "6571eb4a1e7146ef87f806d6aedc088b",
+    "importedAt": "2026-08-25T02:00:48.833Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-16",
+    "sourceImageSha256": "9130370c7c2bfee8804e9fdb74cecd4f110424d009ac14e1ea62ebdcbd417077",
+    "sourceImageName": "Mirage/mirage-16.png",
+    "questionId": "q-ebb67ff1b7d14281",
+    "imageAssetId": "e7c1f5b5ba984e13a02c6d196939421a",
+    "importedAt": "2026-08-25T02:01:03.539Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-17",
+    "sourceImageSha256": "7266b62ab30823b5fb3fc6cafa0f6c22d20eff20026656665f2609be05e74d23",
+    "sourceImageName": "Mirage/mirage-17.png",
+    "questionId": "q-5c7faf9c570043fb",
+    "imageAssetId": "467e3ee833ce4ec9b78827a36fa3f2ab",
+    "importedAt": "2026-08-25T02:01:17.868Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-18",
+    "sourceImageSha256": "db045243c629ba641d076a8e9bb47032bba8807d6cd61159a8b619a00d808f92",
+    "sourceImageName": "Mirage/mirage-18.png",
+    "questionId": "q-37009de978064406",
+    "imageAssetId": "4c79372da1734d85bc4eefffb89298ce",
+    "importedAt": "2026-08-25T02:01:32.746Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-19",
+    "sourceImageSha256": "fa20cc075f58300b787b0f85891bda5dd42b68785c55a5cbf58c93aac04b5a4b",
+    "sourceImageName": "Mirage/mirage-19.png",
+    "questionId": "q-799e7457ebf44015",
+    "imageAssetId": "7ceff6a1093945ffaf371910dd6d4578",
+    "importedAt": "2026-08-25T02:01:46.667Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-20",
+    "sourceImageSha256": "31c95afa41cbd4897b6e713b075bc817e9219c59747e0c43fad4b2cd21e0851d",
+    "sourceImageName": "Mirage/mirage-20.png",
+    "questionId": "q-53f91238a7584e26",
+    "imageAssetId": "ac30558418d84467a0f09fc9b782db62",
+    "importedAt": "2026-08-25T02:02:00.657Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-21",
+    "sourceImageSha256": "8c3ae615de7a7ef4d9c7ce5c36026cf0beda1a20b743b765d783f8d0d7886fcd",
+    "sourceImageName": "Mirage/mirage-21.png",
+    "questionId": "q-14720da4ce4b421e",
+    "imageAssetId": "dcd4cf48825b400ba63b75dd525afc2d",
+    "importedAt": "2026-08-25T02:02:14.137Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-22",
+    "sourceImageSha256": "71b546e34e8562eb7bf1f53491b0b0c1a4a10112cc898b17f9ac5852e78a9d6b",
+    "sourceImageName": "Mirage/mirage-22.png",
+    "questionId": "q-20ee077fb7f744f9",
+    "imageAssetId": "ef588e96f1d146c0bab491c8939df9d3",
+    "importedAt": "2026-08-25T02:02:27.942Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-23",
+    "sourceImageSha256": "d344e872cdfd813a01c77a7b6304500133996d36fb735bf2dba3d1305faa8f83",
+    "sourceImageName": "Mirage/mirage-23.png",
+    "questionId": "q-5c920bb8c12b46ce",
+    "imageAssetId": "a29b766061ce4226becaddd16ce91a41",
+    "importedAt": "2026-08-25T02:02:42.231Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-24",
+    "sourceImageSha256": "3754f1a530455c2ebe37c221950fb0edfa77afd81fab4682f8f31ccfafcde5ae",
+    "sourceImageName": "Mirage/mirage-24.png",
+    "questionId": "q-29d8d6208f04469c",
+    "imageAssetId": "bb970479449e4848835587e727209a3c",
+    "importedAt": "2026-08-25T02:02:56.039Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-25",
+    "sourceImageSha256": "7dcaa22afc64fe4298ed9c52d0a0b3c72ad755c31ddd9697e3476f3bb7506867",
+    "sourceImageName": "Mirage/mirage-25.png",
+    "questionId": "q-88996ac5288e4927",
+    "imageAssetId": "0a9d68d2ab1c47d18a80c57ed0c0079e",
+    "importedAt": "2026-08-25T02:03:09.578Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-26",
+    "sourceImageSha256": "de90cfbcd319103abbe608a36831895cfbf22a9a68fbef978794495a66033c0c",
+    "sourceImageName": "Mirage/mirage-26.png",
+    "questionId": "q-781f50b3a8184f33",
+    "imageAssetId": "9548f3ae531d45a4ad19fb71d86612b8",
+    "importedAt": "2026-08-25T02:03:23.719Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-27",
+    "sourceImageSha256": "26ca0070b4a99690ef79068e10710dac5320e12ea8303cb3d95c5f48d707a1be",
+    "sourceImageName": "Mirage/mirage-27.png",
+    "questionId": "q-104b2872fe314f9a",
+    "imageAssetId": "08842db6db834fd7bbc96d89e18a6917",
+    "importedAt": "2026-08-25T02:03:37.338Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-28",
+    "sourceImageSha256": "c501a4c82e4ee198c30ebd42213ce94f3d8f515655c1c0dc20b585354635ee1f",
+    "sourceImageName": "Mirage/mirage-28.png",
+    "questionId": "q-7e517e54b9d047fe",
+    "imageAssetId": "1c9a46023faf457b881699c961e91dd2",
+    "importedAt": "2026-08-25T02:03:51.105Z",
+    "mapId": "mirage"
   }
 ]
