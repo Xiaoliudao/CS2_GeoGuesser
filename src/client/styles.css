@@ -382,7 +382,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .layer-tabs button { flex: 1; padding: 9px; border: 1px solid #3a484e; color: #8f9da3; background: #0a0f11; font-weight: 800; letter-spacing: .14em; }
 .layer-tabs button.is-active { border-color: var(--orange); color: white; background: rgba(255,107,44,.14); }
 .radar-picker { text-align: center; }
-.radar-image-wrap { position: relative; width: 100%; max-width: 660px; margin: 0 auto; line-height: 0; border: 1px solid #3a484e; background: #080c0e; overflow: hidden; }
+.radar-image-wrap { position: relative; isolation: isolate; width: 100%; max-width: 660px; margin: 0 auto; line-height: 0; border: 1px solid #3a484e; background: #080c0e; overflow: hidden; }
 .radar-gesture-surface { position: relative; width: 100%; overflow: hidden; touch-action: none; cursor: grab; overscroll-behavior: contain; }
 .radar-viewport.is-selectable .radar-gesture-surface { cursor: crosshair; }
 .radar-viewport.is-dragging .radar-gesture-surface { cursor: grabbing; }
