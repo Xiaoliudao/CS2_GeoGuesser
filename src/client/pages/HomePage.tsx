@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { nicknameSchema } from "../../shared/schemas";
 import { MAP_IDS, type MapId } from "../../shared/maps";
 import {
@@ -30,6 +30,8 @@ const CREATE_ROOM_ERROR_MESSAGES: Record<string, string> = {
   INVALID_SERVER_REGION: "The server region selection is invalid.",
 };
 
+type HomeFlow = "modes" | "multiplayer" | "join";
+
 function settingsTargetForErrorCode(errorCode: string): string {
   if (errorCode === "INVALID_ROUND_COUNT") return MATCH_SETTINGS_ROUNDS_INPUT_ID;
   if (errorCode === "INVALID_ROUND_DURATION") return MATCH_SETTINGS_DURATION_INPUT_ID;
@@ -39,6 +41,8 @@ function settingsTargetForErrorCode(errorCode: string): string {
 }
 
 export function HomePage() {
+  const [flow, setFlow] = useState<HomeFlow>("modes");
+  const multiplayerHeadingRef = useRef<HTMLHeadingElement>(null);
   const [nickname, setNickname] = useState(getNickname);
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -65,6 +69,17 @@ export function HomePage() {
   const currentAvailability = availabilityIsCurrent ? availability : null;
 
   useEffect(() => {
+    if (flow === "multiplayer") multiplayerHeadingRef.current?.focus();
+  }, [flow]);
+
+  useEffect(() => {
+    if (flow !== "multiplayer") {
+      setAvailability(null);
+      setAvailabilityMapPoolKey("");
+      setAvailabilityError("");
+      setCheckingAvailability(false);
+      return;
+    }
     if (mapPool.length === 0) {
       setAvailability(null);
       setAvailabilityMapPoolKey("");
@@ -96,7 +111,7 @@ export function HomePage() {
       if (!controller.signal.aborted) setCheckingAvailability(false);
     });
     return () => controller.abort();
-  }, [mapPool]);
+  }, [flow, mapPool]);
 
   const availableQuestions = currentAvailability?.availableQuestions ?? 0;
   const settingsAreAvailable = settingsResult.success
@@ -212,6 +227,21 @@ export function HomePage() {
     navigate("/solo");
   };
 
+  const openFlow = (nextFlow: Exclude<HomeFlow, "modes">) => {
+    if (!validateNickname()) return;
+    setError("");
+    setSettingsPanelError("");
+    setFlow(nextFlow);
+  };
+
+  const returnToModes = (focusId: string) => {
+    setFlow("modes");
+    setError("");
+    setSettingsPanelError("");
+    setSettingsExpanded(false);
+    window.setTimeout(() => document.getElementById(focusId)?.focus(), 0);
+  };
+
   const joinRoom = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -235,78 +265,161 @@ export function HomePage() {
           </h1>
           <p className="home-lead">Read the angle. Pinpoint the position. Beat the clock.</p>
 
-          <label htmlFor="nickname">NICKNAME</label>
-          <input
-            id="nickname"
-            value={nickname}
-            onChange={(event) => setNickname(event.target.value)}
-            maxLength={20}
-            placeholder="Your callsign"
-            autoComplete="nickname"
-          />
+          {flow === "modes" && (
+            <>
+              <label htmlFor="nickname">NICKNAME</label>
+              <input
+                id="nickname"
+                value={nickname}
+                onChange={(event) => {
+                  setNickname(event.target.value);
+                  setError("");
+                }}
+                maxLength={20}
+                placeholder="Your callsign"
+                autoComplete="nickname"
+              />
 
-          <div className="home-mode-launch solo-mode-launch">
-            <div><span>SINGLE PLAYER</span><small>Start immediately. No room or opponent required.</small></div>
-            <button className="primary-button" type="button" onClick={startSolo} disabled={busy}>SINGLE PLAYER</button>
-          </div>
+              <div className="home-mode-grid" role="group" aria-label="Game modes">
+                <button
+                  id="single-player-mode"
+                  className="home-mode-card is-solo"
+                  type="button"
+                  aria-label="SINGLE PLAYER"
+                  aria-describedby="single-player-mode-description"
+                  onClick={startSolo}
+                  disabled={busy}
+                >
+                  <span>SINGLE PLAYER</span>
+                  <small id="single-player-mode-description">Configure a private practice session.</small>
+                  <b aria-hidden="true">→</b>
+                </button>
+                <button
+                  id="multiplayer-mode"
+                  className="home-mode-card is-multiplayer"
+                  type="button"
+                  aria-label="MULTIPLAYER"
+                  aria-describedby="multiplayer-mode-description"
+                  onClick={() => openFlow("multiplayer")}
+                  disabled={busy}
+                >
+                  <span>MULTIPLAYER</span>
+                  <small id="multiplayer-mode-description">Create a match and invite a friend.</small>
+                  <b aria-hidden="true">→</b>
+                </button>
+                <button
+                  id="join-room-mode"
+                  className="home-mode-card is-join"
+                  type="button"
+                  aria-label="JOIN ROOM"
+                  aria-describedby="join-room-mode-description"
+                  onClick={() => openFlow("join")}
+                  disabled={busy}
+                >
+                  <span>JOIN ROOM</span>
+                  <small id="join-room-mode-description">Enter an existing five-character code.</small>
+                  <b aria-hidden="true">→</b>
+                </button>
+              </div>
+              {error && <div className="form-error" role="alert">{error}</div>}
+            </>
+          )}
 
-          <div className="divider mode-divider"><span>MULTIPLAYER</span></div>
+          {flow === "multiplayer" && (
+            <section className="home-flow-panel" aria-labelledby="multiplayer-settings-title">
+              <div className="home-flow-heading">
+                <div>
+                  <span>MULTIPLAYER</span>
+                  <h2 id="multiplayer-settings-title" ref={multiplayerHeadingRef} tabIndex={-1}>ROOM SETTINGS</h2>
+                </div>
+                <button
+                  className="home-flow-back"
+                  type="button"
+                  onClick={() => returnToModes("multiplayer-mode")}
+                  disabled={busy}
+                >
+                  ← BACK
+                </button>
+              </div>
+              <div className="home-player-identity"><span>PLAYER</span><strong>{nickname}</strong></div>
 
-          <MatchSettingsPanel
-            expanded={settingsExpanded}
-            roundsInput={roundsInput}
-            durationInput={durationInput}
-            mapPool={mapPool}
-            serverRegion={serverRegion}
-            availability={currentAvailability}
-            checkingAvailability={checkingAvailability || !availabilityIsCurrent}
-            availabilityError={settingsPanelError || availabilityError}
-            onToggle={() => setSettingsExpanded((expanded) => !expanded)}
-            onRoundsChange={(value) => {
-              setSettingsPanelError("");
-              setRoundsInput(value);
-            }}
-            onDurationChange={(value) => {
-              setSettingsPanelError("");
-              setDurationInput(value);
-            }}
-            onMapPoolChange={(nextMapPool) => {
-              setSettingsPanelError("");
-              setMapPool(MAP_IDS.filter((mapId) => nextMapPool.includes(mapId)));
-            }}
-            onServerRegionChange={(region) => {
-              setSettingsPanelError("");
-              setServerRegion(region);
-            }}
-          />
+              <MatchSettingsPanel
+                expanded={settingsExpanded}
+                roundsInput={roundsInput}
+                durationInput={durationInput}
+                mapPool={mapPool}
+                serverRegion={serverRegion}
+                availability={currentAvailability}
+                checkingAvailability={checkingAvailability || !availabilityIsCurrent}
+                availabilityError={settingsPanelError || availabilityError}
+                onToggle={() => setSettingsExpanded((expanded) => !expanded)}
+                onRoundsChange={(value) => {
+                  setSettingsPanelError("");
+                  setRoundsInput(value);
+                }}
+                onDurationChange={(value) => {
+                  setSettingsPanelError("");
+                  setDurationInput(value);
+                }}
+                onMapPoolChange={(nextMapPool) => {
+                  setSettingsPanelError("");
+                  setMapPool(MAP_IDS.filter((mapId) => nextMapPool.includes(mapId)));
+                }}
+                onServerRegionChange={(region) => {
+                  setSettingsPanelError("");
+                  setServerRegion(region);
+                }}
+              />
 
-          <button
-            className="primary-button create-room-button"
-            type="button"
-            onClick={createRoom}
-            disabled={busy}
-            aria-disabled={busy || !settingsAreAvailable}
-          >
-            {busy ? "CONNECTING…" : "CREATE MULTIPLAYER ROOM"}
-          </button>
+              <button
+                className="primary-button create-room-button"
+                type="button"
+                onClick={createRoom}
+                disabled={busy}
+                aria-disabled={busy || !settingsAreAvailable}
+              >
+                {busy ? "CONNECTING…" : "CREATE MULTIPLAYER ROOM"}
+              </button>
+              {error && <div className="form-error" role="alert">{error}</div>}
+            </section>
+          )}
 
-          <div className="divider"><span>OR JOIN A ROOM</span></div>
-          <form onSubmit={joinRoom}>
-            <label htmlFor="room-code">ROOM CODE</label>
-            <input
-              id="room-code"
-              className="room-code-input"
-              value={roomCode}
-              onChange={(event) => setRoomCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
-              maxLength={5}
-              placeholder="K7P2A"
-              autoComplete="off"
-            />
-            <button className="secondary-button" type="submit" disabled={busy}>
-              JOIN ROOM
-            </button>
-          </form>
-          {error && <div className="form-error" role="alert">{error}</div>}
+          {flow === "join" && (
+            <section className="home-flow-panel" aria-labelledby="join-room-title">
+              <div className="home-flow-heading">
+                <div>
+                  <span>MULTIPLAYER</span>
+                  <h2 id="join-room-title">JOIN ROOM</h2>
+                </div>
+                <button
+                  className="home-flow-back"
+                  type="button"
+                  onClick={() => returnToModes("join-room-mode")}
+                  disabled={busy}
+                >
+                  ← BACK
+                </button>
+              </div>
+              <div className="home-player-identity"><span>PLAYER</span><strong>{nickname}</strong></div>
+              <form className="home-join-form" onSubmit={joinRoom}>
+                <label htmlFor="room-code">ROOM CODE</label>
+                <input
+                  id="room-code"
+                  className="room-code-input"
+                  value={roomCode}
+                  onChange={(event) => setRoomCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                  maxLength={5}
+                  placeholder="K7P2A"
+                  autoComplete="off"
+                  autoFocus
+                />
+                <button className="primary-button" type="submit" disabled={busy}>
+                  {busy ? "JOINING…" : "JOIN ROOM"}
+                </button>
+              </form>
+              {error && <div className="form-error" role="alert">{error}</div>}
+            </section>
+          )}
         </div>
       </header>
 

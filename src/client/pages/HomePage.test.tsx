@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAP_IDS } from "../../shared/maps";
@@ -67,6 +67,12 @@ async function waitForAvailability() {
   return createButton;
 }
 
+async function openMultiplayer(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "MULTIPLAYER" }));
+  const heading = screen.getByRole("heading", { name: "ROOM SETTINGS" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+}
+
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
   localStorage.clear();
@@ -80,6 +86,21 @@ afterEach(() => {
 });
 
 describe("HomePage compact room creation", () => {
+  it("initially shows only the three mode actions and defers every setup form", () => {
+    const fetchMock = installFetch();
+    render(<HomePage />);
+
+    const modes = screen.getByRole("group", { name: "Game modes" });
+    expect(within(modes).getAllByRole("button")).toHaveLength(3);
+    expect(within(modes).getByRole("button", { name: "SINGLE PLAYER" })).toBeTruthy();
+    expect(within(modes).getByRole("button", { name: "MULTIPLAYER" })).toBeTruthy();
+    expect(within(modes).getByRole("button", { name: "JOIN ROOM" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "ROOM SETTINGS" })).toBeNull();
+    expect(screen.queryByLabelText("ROOM CODE")).toBeNull();
+    expect(screen.queryByRole("button", { name: "CREATE MULTIPLAYER ROOM" })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("opens the separate solo route without creating a multiplayer room", async () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
@@ -95,6 +116,7 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
+    await openMultiplayer(user);
     const details = document.getElementById(MATCH_SETTINGS_DETAILS_ID) as HTMLDivElement;
     const createButton = await waitForAvailability();
 
@@ -113,6 +135,7 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
+    await openMultiplayer(user);
     await waitForAvailability();
 
     await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
@@ -131,6 +154,7 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
+    await openMultiplayer(user);
     await waitForAvailability();
 
     await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
@@ -148,6 +172,7 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
+    await openMultiplayer(user);
     await waitForAvailability();
 
     await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
@@ -164,6 +189,7 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch({ availableQuestions: 4 });
     render(<HomePage />);
+    await openMultiplayer(user);
     const createButton = screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" });
     await waitFor(() => expect(document.querySelector(".match-settings-note")?.textContent).toContain("ONLY 4 QUESTIONS ARE AVAILABLE"));
 
@@ -182,6 +208,7 @@ describe("HomePage compact room creation", () => {
       createBody: { error: "QUESTION_DATABASE_UNAVAILABLE" },
     });
     render(<HomePage />);
+    await openMultiplayer(user);
     const createButton = await waitForAvailability();
 
     await user.click(createButton);
@@ -196,12 +223,53 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
-    await waitForAvailability();
+    await user.click(screen.getByRole("button", { name: "JOIN ROOM" }));
 
     await user.type(screen.getByLabelText("ROOM CODE"), "87mdb");
     await user.click(screen.getByRole("button", { name: "JOIN ROOM" }));
 
     await waitFor(() => expect(window.location.pathname).toBe("/room/87MDB"));
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/rooms/87MDB/preview")).toBe(true);
+  });
+
+  it("returns from deferred multiplayer settings to the three mode actions", async () => {
+    const user = userEvent.setup();
+    installFetch();
+    render(<HomePage />);
+
+    await openMultiplayer(user);
+    await user.click(screen.getByRole("button", { name: "← BACK" }));
+
+    const modes = screen.getByRole("group", { name: "Game modes" });
+    expect(within(modes).getAllByRole("button")).toHaveLength(3);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "MULTIPLAYER" })));
+    expect(screen.queryByRole("heading", { name: "ROOM SETTINGS" })).toBeNull();
+  });
+
+  it("returns from the join form and restores focus to its mode action", async () => {
+    const user = userEvent.setup();
+    installFetch();
+    render(<HomePage />);
+
+    await user.click(screen.getByRole("button", { name: "JOIN ROOM" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("ROOM CODE"));
+    await user.click(screen.getByRole("button", { name: "← BACK" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "JOIN ROOM" })));
+    expect(screen.queryByLabelText("ROOM CODE")).toBeNull();
+  });
+
+  it("keeps all setup flows hidden until the nickname is valid", async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch();
+    render(<HomePage />);
+
+    await user.clear(screen.getByLabelText("NICKNAME"));
+    await user.click(screen.getByRole("button", { name: "MULTIPLAYER" }));
+
+    expect(screen.getByRole("alert").textContent).toContain("Nickname must be between 2 and 20 characters");
+    expect(screen.getByRole("group", { name: "Game modes" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "ROOM SETTINGS" })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
