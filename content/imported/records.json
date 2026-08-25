@@ -250,5 +250,14 @@
     "imageAssetId": "1c9a46023faf457b881699c961e91dd2",
     "importedAt": "2026-08-25T02:03:51.105Z",
     "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage/mirage-29",
+    "sourceImageSha256": "766bbe18febe9ae4d79fbd63c2e994f4bc0a2f3727302b02f30b0db84c5f2b6e",
+    "sourceImageName": "Mirage/mirage-29.png",
+    "questionId": "q-71d5f9235dd34294",
+    "imageAssetId": "46c3d3fcf01f47c3874ca74d738eae1b",
+    "importedAt": "2026-08-25T02:49:43.471Z",
+    "mapId": "mirage"
   }
 ]
