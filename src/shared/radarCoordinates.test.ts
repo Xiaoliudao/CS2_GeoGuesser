@@ -13,6 +13,12 @@ describe("world to radar conversion", () => {
     expect(worldToRadarPoint({ x: -670, y: -847, z: 0 }, mirage, mirage.layers[0])).toEqual({ x: 0.5, y: 0.5 });
   });
 
+  it("converts the real Mirage preview smoke-test coordinates", () => {
+    const point = worldToRadarPoint({ x: 1365.081055, y: -5.346069, z: -167.96875 }, mirage, mirage.layers[0]);
+    expect(point.x).toBeCloseTo(0.897477, 6);
+    expect(point.y).toBeCloseTo(0.335614, 6);
+  });
+
   it("does not hide out-of-radar capture errors by clamping", () => {
     expect(() => worldToRadarPoint({ x: -9000, y: 1713, z: 0 }, mirage, mirage.layers[0])).toThrow(/outside/);
   });

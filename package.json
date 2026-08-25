@@ -16,9 +16,20 @@
     "radar:extract": "tsx scripts/content/radar-extract.ts",
     "question:import": "tsx scripts/content/question-import.ts",
     "questions:import-inbox": "tsx scripts/content/questions-import-inbox.ts",
+    "questions:publish-pending": "tsx scripts/content/questions-publish-pending.ts",
+    "questions:publish": "tsx scripts/content/questions-publish-pending.ts",
+    "questions:migrate-to-d1": "tsx scripts/content/questions-d1-cli.ts migrate",
+    "questions:list": "tsx scripts/content/questions-d1-cli.ts list",
+    "questions:disable": "tsx scripts/content/questions-d1-cli.ts disable",
+    "questions:enable": "tsx scripts/content/questions-d1-cli.ts enable",
+    "questions:update-point": "tsx scripts/content/questions-d1-cli.ts update-point",
+    "questions:update": "tsx scripts/content/questions-d1-cli.ts update-point",
+    "questions:export": "tsx scripts/content/questions-d1-cli.ts export",
+    "db:migrate:remote": "wrangler d1 migrations apply cs2-map-guesser-db --remote",
     "assets:upload": "tsx scripts/content/assets-upload.ts"
   },
   "dependencies": {
+    "jose": "^6.2.10",
     "react": "latest",
     "react-dom": "latest",
     "zod": "latest"
@@ -26,9 +37,9 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "latest",
     "@cloudflare/workers-types": "latest",
+    "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "@types/node": "latest",
     "@vitejs/plugin-react": "latest",
     "sharp": "latest",
     "tsx": "latest",

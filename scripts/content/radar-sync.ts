@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { selectRadarProvider, type RadarProviderId } from "../../src/content/radarProvider";
+import { copyRadarPreviewAsset } from "../../src/content/questionPreviewWriter";
 import { GitHubExtractedRadarProvider } from "./providers/github-extracted";
 import { LocalCS2RadarProvider } from "./providers/local-cs2";
-import { projectRoot, writeRadarRegistry } from "./radar-registry";
+import { projectRoot, publicDevAssetsRoot, radarRoot, writeRadarRegistry } from "./radar-registry";
 
 function forcedProvider(): RadarProviderId | undefined {
   const index = process.argv.indexOf("--provider");
@@ -40,6 +42,10 @@ async function main() {
     throw new Error(`REAL_RADAR_SYNC_INCOMPLETE maps=${Object.keys(result.maps).length} artifacts=${result.artifacts.length} overviews=${result.overviews.length}`);
   }
   console.log(`WROTE ${writeRadarRegistry(result)}`);
+  for (const artifact of result.artifacts) {
+    copyRadarPreviewAsset(join(radarRoot, artifact.mapId, `${artifact.layerId}.webp`), publicDevAssetsRoot, artifact.mapId, artifact.layerId);
+  }
+  console.log(`DEV_RADAR_PREVIEW_READY ${join(publicDevAssetsRoot, "radars")}`);
   if (process.argv.includes("--no-upload") || !hasUploadCredentials()) {
     console.log("R2_UPLOAD_PENDING: generated real radar assets locally; configure Cloudflare credentials to upload.");
   } else {

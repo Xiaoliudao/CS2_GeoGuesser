@@ -288,11 +288,56 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .editor-controls { grid-row: span 2; }.editor-controls label:not(:first-child) { margin-top: 18px; }
 .editor-controls pre { min-height: 150px; padding: 14px; overflow: auto; color: #b9ee7c; background: #080c0e; border: 1px solid #29353a; font-size: 12px; }
 .editor-controls select { width: 100%; margin: 7px 0 2px; padding: 10px; color: var(--text); background: #080c0e; border: 1px solid #39464c; }
+.coordinate-mode { margin-top: 16px; padding: 8px 10px; border: 1px solid; font-size: 9px; font-weight: 800; letter-spacing: .13em; }
+.coordinate-mode.is-auto { color: #b9ee7c; border-color: #536e36; background: rgba(120,170,65,.09); }
+.coordinate-mode.is-manual { color: #ffb18c; border-color: #7b4935; background: rgba(255,107,44,.09); }
+.point-audit { display: grid; gap: 1px; margin-top: 14px; background: #29353a; border: 1px solid #29353a; }
+.point-audit > div { padding: 10px; background: #080c0e; }
+.point-audit span { display: block; margin-bottom: 6px; color: #76848a; font-size: 8px; font-weight: 800; letter-spacing: .13em; }
+.point-audit code { color: #dbe5d5; font-size: 11px; white-space: pre-line; }
+.editor-actions { display: grid; gap: 8px; margin-top: 14px; }
+.editor-actions button { margin: 0; }
+.editor-action-message { margin: 10px 0 0; padding: 9px; color: #b9ee7c; background: #080c0e; border-left: 2px solid #80ad45; font-size: 10px; overflow-wrap: anywhere; }
+.editor-radar .guess-marker.is-auto { color: #d7ff87; }
+.editor-radar .guess-marker.is-auto i { background: #659d24; box-shadow: 0 0 0 5px rgba(101,157,36,.22), 0 0 18px rgba(163,225,81,.7); }
 .editor-preview img { width: 100%; max-height: 360px; display: block; object-fit: contain; }
+.editor-empty { max-width: 760px; margin: 80px auto 0; padding: 28px; }
+.admin-editor-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.admin-session { min-width: 250px; padding: 13px 15px; border: 1px solid #334047; background: #0b1114; }
+.admin-session small, .admin-session strong { display: block; }
+.admin-session small { color: #718087; font-size: 8px; font-weight: 800; letter-spacing: .14em; }
+.admin-session strong { margin: 6px 0 10px; font-size: 12px; overflow-wrap: anywhere; }
+.admin-session a { color: var(--orange-bright); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-decoration: none; }
+.admin-summary { max-width: 1180px; margin: 0 auto 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; border: 1px solid #29353a; background: #29353a; }
+.admin-summary div { padding: 13px 16px; background: #0d1417; }
+.admin-summary span { display: block; color: #728087; font-size: 8px; font-weight: 800; letter-spacing: .14em; }
+.admin-summary strong { display: block; margin-top: 5px; font: 800 25px/1 "Arial Narrow", sans-serif; }
+.admin-upload { max-width: 1180px; margin: 0 auto 14px; padding: 20px; border: 1px solid var(--line); background: linear-gradient(145deg, #11191d, #0c1215); }
+.admin-upload > header span { color: var(--orange-bright); font-size: 8px; font-weight: 800; letter-spacing: .16em; }
+.admin-upload > header h2 { margin: 6px 0 3px; font-size: 30px; }
+.admin-upload > header p { margin: 0 0 18px; color: var(--muted); font-size: 11px; }
+.admin-upload-fields { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; align-items: end; }
+.admin-upload-fields label { margin: 0; }
+.admin-upload-fields input[type="file"] { height: 52px; padding: 13px; font-size: 11px; }
+.admin-upload-point { height: 52px; padding: 11px 13px; border: 1px solid #364248; background: #0b1114; }
+.admin-upload-point span, .admin-upload-point strong { display: block; }
+.admin-upload-point span { color: #78868c; font-size: 7px; font-weight: 800; letter-spacing: .13em; }
+.admin-upload-point strong { margin-top: 6px; color: #d7ff87; font-size: 10px; }
+.admin-upload-workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; align-items: center; }
+.admin-image-preview { min-height: 330px; display: grid; place-items: center; overflow: hidden; border: 1px solid #2d393e; background: #070a0c; }
+.admin-image-preview img { width: 100%; height: 100%; max-height: 480px; object-fit: contain; }
+.admin-image-preview span { color: #5f6c72; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.admin-upload > .primary-button { max-width: 420px; display: block; margin: 16px 0 0 auto; }
+.admin-global-message { max-width: 1180px; margin: 0 auto 14px; }
+.admin-editor-layout { margin-top: 0; }
 .content-empty-state { margin-top: 20px; padding: 14px; text-align: center; border: 1px solid #6e4d2f; background: rgba(255,107,44,.08); }
 .content-empty-state strong, .content-empty-state span { display: block; }
 .content-empty-state strong { color: var(--orange-bright); font-size: 11px; letter-spacing: .12em; }
 .content-empty-state span { margin-top: 5px; color: var(--muted); font-size: 10px; }
+.content-available-state { margin-top: 20px; padding: 12px 14px; border: 1px solid #496832; background: rgba(128,173,69,.08); text-align: center; }
+.content-available-state strong, .content-available-state span { display: block; }
+.content-available-state strong { color: #b9ee7c; font-size: 10px; letter-spacing: .12em; }
+.content-available-state span { margin-top: 5px; color: var(--muted); font-size: 9px; }
 
 @media (max-width: 980px) {
   .game-layout-v2 { grid-template-columns: minmax(0, 1fr); }
@@ -309,4 +354,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .round-console { grid-template-columns: repeat(2, 1fr); }.round-console > div:last-child { grid-column: 1 / -1; }
   .result-page-heading { align-items: flex-start; flex-direction: column; }
   .editor-page { padding: 20px 12px; }.editor-layout { grid-template-columns: 1fr; }.editor-controls { grid-row: auto; }
+  .admin-editor-header { align-items: stretch; flex-direction: column; }.admin-session { min-width: 0; }
+  .admin-upload-fields, .admin-summary { grid-template-columns: 1fr; }.admin-upload-workspace { grid-template-columns: 1fr; }
+  .admin-image-preview { min-height: 220px; }
 }

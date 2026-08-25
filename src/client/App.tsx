@@ -5,6 +5,7 @@ import { RoomPage } from "./pages/RoomPage";
 const DevQuestionEditorPage = import.meta.env.DEV
   ? lazy(() => import("./pages/QuestionEditorPage").then((module) => ({ default: module.QuestionEditorPage })))
   : null;
+const AdminQuestionEditorPage = lazy(() => import("./pages/AdminQuestionEditorPage").then((module) => ({ default: module.AdminQuestionEditorPage })));
 
 function currentPath(): string {
   return window.location.pathname;
@@ -27,6 +28,9 @@ export function App() {
   const roomMatch = path.match(/^\/room\/([A-HJ-NP-Z2-9]{5})\/?$/i);
   if (DevQuestionEditorPage && path === "/dev/question-editor") {
     return <Suspense fallback={null}><DevQuestionEditorPage /></Suspense>;
+  }
+  if (path === "/admin/question-editor" || path === "/admin/question-editor/") {
+    return <Suspense fallback={null}><AdminQuestionEditorPage /></Suspense>;
   }
   if (roomMatch) return <RoomPage roomCode={roomMatch[1].toUpperCase()} />;
   return <HomePage />;

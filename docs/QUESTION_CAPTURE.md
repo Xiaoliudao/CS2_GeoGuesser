@@ -43,7 +43,35 @@ setang_exact -8.250000 179.500000 0.000000
 npm run questions:import-inbox -- --dry-run
 ```
 
-dry-run 只读取和验证，不转换文件、不上传，也不修改任何 manifest。确认每项的 map、world position、自动楼层和雷达点后执行：
+dry-run 不上传 R2、不修改生产 D1。它会复制原始截图到被 Git 忽略的 `public\__dev_assets__\questions`，并生成仅供本地 QA 使用的 `content\generated\question-preview.json` 与浏览器副本。确认每项的 map、world position、自动楼层和雷达点后，先启动开发服务器：
+
+```powershell
+npm run dev
+```
+
+打开：
+
+```text
+http://127.0.0.1:5173/dev/question-editor
+```
+
+选择 `PREVIEW QUESTION`，直接核对真实截图、`public\__dev_assets__\radars` 中的真实同步雷达、AUTO marker、世界坐标和视角。页面明确分开显示 `AUTOMATIC POINT`、`MANUAL OVERRIDE` 与 `FINAL ANSWER`。
+
+- 移动 marker 后点击 `SAVE OVERRIDE`：保存到 `content\generated\question-overrides.json`，刷新仍保留；原 worldPosition 和 automaticPoint 不变。
+- 点击 `RESET TO AUTOMATIC`：删除该 preview 的持久化覆盖，final answer 恢复 automaticPoint。
+- 点击 `PUBLISH QUESTION`：批准当前 final answer，生成 opaque ID 和 `content\generated\prepared-questions` 中的 WebP，并尝试上传 R2。
+
+如果本机没有 Cloudflare 认证，状态会变成 `PUBLISH PENDING`，不会丢失 QA 结果，也不会提前污染生产题库。需要上传时使用浏览器 OAuth，不要把 token 写入本地文件：
+
+```powershell
+npx wrangler login
+npm run questions:publish-pending -- --dry-run
+npm run questions:publish-pending
+```
+
+上传成功并确认 R2 对象存在后，工具会插入 D1 row 并递增 catalog version；状态立即变为 `PUBLISHED`。不需要 build 或 deploy。大厅会从 D1 显示真实 enabled question 数量；少于 5 道时使用实际可用轮数。
+
+也可以确认正确后用 CLI 批量批准/发布：
 
 ```powershell
 npm run questions:import-inbox
@@ -51,18 +79,12 @@ npm run questions:import-inbox
 
 脚本按文件逐项处理，某项失败不会阻止后面的文件。它会输出 `Imported / Prepared / Skipped / Failed` 汇总，并用 `MISSING_METADATA`、`INVALID_MAP`、`INVALID_POSITION`、`MISSING_OVERVIEW` 等明确错误码定位问题。
 
-- 有 Cloudflare 凭据：转 WebP、上传 R2，成功后才更新 `content/question-manifest.json` 和 Worker-only 清单，并把源图片哈希写入 `content/imported/records.json`。
+- 有 Cloudflare 凭据：转 WebP、上传并确认 R2，成功后插入 D1，并把源图片哈希写入 `content/imported/records.json`。
 - 无 Cloudflare 凭据：生成 opaque UUID WebP 和忽略提交的 pending manifest，输出 `R2_UPLOAD_PENDING`，不污染生产题库；以后在有凭据的环境重跑即可完成上传。
 - 已导入或已 pending 的同一源图片 SHA-256 会跳过，避免重复题目。
 
-## 4. 开发 QA
+## 4. 开发 QA 安全边界
 
-运行 `npm run dev`，打开：
-
-```text
-http://127.0.0.1:5173/dev/question-editor
-```
-
-页面只在开发模式存在，可从已导入题目中选择并同时查看真实截图、雷达、自动点、地图、楼层、世界坐标、视角和坐标来源。点击雷达只用于临时人工对照，不会直接修改生产 manifest。
+`/dev/question-editor`、preview manifest、inbox 截图、世界坐标和视角只用于开发。PUBLISHED 题目由 development API server-side 查询 D1。`public/__dev_assets__` 被 Git 忽略，Vite 的生产构建明确禁用 public 目录复制；生产 gameplay 只使用 `/media/...` 的 Worker D1→R2 路由，不会发布本地 preview 数据。
 
 单张导入命令 `npm run question:import` 仍保留给特殊人工覆盖流程；日常采集请使用 inbox 批处理。

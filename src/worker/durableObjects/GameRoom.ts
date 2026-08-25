@@ -12,19 +12,17 @@ import type {
   RoundResultState,
   RoomStatus,
 } from "../../shared/types";
-import { getQuestion, QUESTIONS, shuffledQuestionIds, toPublicQuestion } from "../game/questions";
+import type { Env } from "../env";
+import { toPublicQuestion, type ServerQuestion } from "../game/questions";
 import { validateGuess } from "../game/roomState";
 import { scoreGuess } from "../game/scoring";
+import { QuestionRepository } from "../questions/QuestionRepository";
 
 const STATE_KEY = "room-state";
 const TOTAL_ROUNDS = 5;
 const ROUND_DURATION_MS = 20_000;
 const RESULT_DURATION_MS = 5_000;
 const DISCONNECT_GRACE_MS = 30_000;
-
-interface Env {
-  GAME_ROOM: DurableObjectNamespace<GameRoom>;
-}
 
 interface InternalPlayer {
   id: string;
@@ -49,13 +47,14 @@ interface StoredGuess {
 }
 
 interface InternalRoomState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   roomCode: string;
   status: RoomStatus;
   players: InternalPlayer[];
   round: number;
   totalRounds: number;
-  questionIds: string[];
+  questionCount: number;
+  questionSnapshot: ServerQuestion[];
   currentQuestionId: string | null;
   roundStartedAt: number | null;
   roundEndsAt: number | null;
@@ -79,9 +78,9 @@ export class GameRoom extends DurableObject<Env> {
     super(ctx, env);
     this.ready = ctx.blockConcurrencyWhile(async () => {
       const stored = await ctx.storage.get<InternalRoomState & { schemaVersion?: number }>(STATE_KEY);
-      if (stored && stored.schemaVersion !== 3) {
+      if (stored && stored.schemaVersion !== 4) {
         this.state = {
-          schemaVersion: 3,
+          schemaVersion: 4,
           roomCode: stored.roomCode,
           status: "waiting",
           players: stored.players.map((player) => ({
@@ -92,8 +91,9 @@ export class GameRoom extends DurableObject<Env> {
             disconnectExpiresAt: null,
           })),
           round: 0,
-          totalRounds: Math.min(TOTAL_ROUNDS, QUESTIONS.length),
-          questionIds: shuffledQuestionIds(Math.min(TOTAL_ROUNDS, QUESTIONS.length)),
+          totalRounds: 0,
+          questionCount: 0,
+          questionSnapshot: [],
           currentQuestionId: null,
           roundStartedAt: null,
           roundEndsAt: null,
@@ -199,14 +199,22 @@ export class GameRoom extends DurableObject<Env> {
     if (!result.success) return new Response("Invalid room code", { status: 400 });
     if (this.state) return new Response("Room already exists", { status: 409 });
 
+    let questionCount = 0;
+    try {
+      questionCount = await this.questions().countEnabled();
+    } catch (error) {
+      this.logQuestionDatabaseError("initialize", error);
+    }
+
     this.state = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       roomCode: result.data,
       status: "waiting",
       players: [],
       round: 0,
-      totalRounds: Math.min(TOTAL_ROUNDS, QUESTIONS.length),
-      questionIds: shuffledQuestionIds(Math.min(TOTAL_ROUNDS, QUESTIONS.length)),
+      totalRounds: 0,
+      questionCount,
+      questionSnapshot: [],
       currentQuestionId: null,
       roundStartedAt: null,
       roundEndsAt: null,
@@ -305,14 +313,37 @@ export class GameRoom extends DurableObject<Env> {
 
   private async readyPlayer(player: InternalPlayer): Promise<void> {
     if (!this.state || this.state.status !== "waiting") return;
-    if (QUESTIONS.length === 0) {
-      const socket = this.ctx.getWebSockets().find((candidate) => this.getAttachment(candidate).playerId === player.id);
-      if (socket) this.sendError(socket, "NO_QUESTIONS_AVAILABLE", "NO REAL QUESTIONS AVAILABLE. Import a real CS2 question first.");
-      return;
-    }
     if (!player.ready) player.ready = true;
     if (this.state.players.length === 2 && this.state.players.every((candidate) => candidate.ready)) {
-      this.startRound(Date.now());
+      try {
+        const [questionCount, questions] = await Promise.all([
+          this.questions().countEnabled(),
+          this.questions().getRandomEnabled(TOTAL_ROUNDS),
+        ]);
+        this.state.questionCount = questionCount;
+        if (questions.length === 0) {
+          for (const candidate of this.state.players) candidate.ready = false;
+          this.broadcast({
+            type: "error",
+            payload: { code: "NO_QUESTIONS_AVAILABLE", message: "NO REAL QUESTIONS AVAILABLE. Publish a real CS2 question first." },
+          });
+          await this.commit();
+          return;
+        }
+        this.state.questionSnapshot = questions;
+        this.state.totalRounds = questions.length;
+        this.startRound(Date.now());
+      } catch (error) {
+        this.logQuestionDatabaseError("start-match", error);
+        for (const candidate of this.state.players) candidate.ready = false;
+        this.broadcast({
+          type: "error",
+          payload: {
+            code: "QUESTION_DATABASE_UNAVAILABLE",
+            message: "Question database is temporarily unavailable. Please retry.",
+          },
+        });
+      }
     }
     await this.commit();
   }
@@ -344,8 +375,13 @@ export class GameRoom extends DurableObject<Env> {
       return;
     }
 
+    const question = this.currentQuestion();
+    if (!question) {
+      this.sendError(socket, "QUESTION_DATABASE_UNAVAILABLE", "The active question snapshot is unavailable. Please retry the match.");
+      return;
+    }
     const score = scoreGuess(
-      getQuestion(this.state.currentQuestionId),
+      question,
       payload.mapId,
       payload.layerId,
       payload.point,
@@ -376,8 +412,8 @@ export class GameRoom extends DurableObject<Env> {
     }
     this.state.status = "waiting";
     this.state.round = 0;
-    this.state.totalRounds = Math.min(TOTAL_ROUNDS, QUESTIONS.length);
-    this.state.questionIds = shuffledQuestionIds(this.state.totalRounds);
+    this.state.totalRounds = 0;
+    this.state.questionSnapshot = [];
     this.state.currentQuestionId = null;
     this.state.roundStartedAt = null;
     this.state.roundEndsAt = null;
@@ -397,7 +433,7 @@ export class GameRoom extends DurableObject<Env> {
     const nextRound = this.state.round + 1;
     this.state.status = "playing";
     this.state.round = nextRound;
-    this.state.currentQuestionId = this.state.questionIds[nextRound - 1];
+    this.state.currentQuestionId = this.state.questionSnapshot[nextRound - 1]?.id ?? null;
     this.state.roundStartedAt = now;
     this.state.roundEndsAt = now + ROUND_DURATION_MS;
     this.state.resultEndsAt = null;
@@ -408,7 +444,11 @@ export class GameRoom extends DurableObject<Env> {
 
   private finishRound(now: number): void {
     if (!this.state || !this.state.currentQuestionId) return;
-    const question = getQuestion(this.state.currentQuestionId);
+    const question = this.currentQuestion();
+    if (!question) {
+      this.finishGame();
+      return;
+    }
     const nextRoundAt = now + RESULT_DURATION_MS;
     const players: PlayerRoundResult[] = this.state.players.map((player) => {
       const guess = this.state?.guesses[player.id];
@@ -476,7 +516,7 @@ export class GameRoom extends DurableObject<Env> {
 
   private publicState(): GameRoomState {
     if (!this.state) throw new Error("Room is not initialized");
-    const question = this.state.currentQuestionId ? getQuestion(this.state.currentQuestionId) : null;
+    const question = this.currentQuestion();
     const players: PublicPlayer[] = this.state.players.map((player) => ({
       id: player.id,
       nickname: player.nickname,
@@ -491,7 +531,7 @@ export class GameRoom extends DurableObject<Env> {
       players,
       round: this.state.round,
       totalRounds: this.state.totalRounds,
-      questionCount: QUESTIONS.length,
+      questionCount: this.state.questionCount,
       currentQuestion:
         (this.state.status === "playing" || this.state.status === "round_result" || this.state.status === "finished") && question
           ? toPublicQuestion(question)
@@ -544,6 +584,23 @@ export class GameRoom extends DurableObject<Env> {
   private getAttachment(socket: WebSocket): SocketAttachment {
     const value = socket.deserializeAttachment() as SocketAttachment | null;
     return value ?? { playerId: null, nickname: null };
+  }
+
+  private questions(): QuestionRepository {
+    return new QuestionRepository(this.env.QUESTIONS_DB);
+  }
+
+  private currentQuestion(): ServerQuestion | null {
+    if (!this.state?.currentQuestionId) return null;
+    return this.state.questionSnapshot.find((question) => question.id === this.state?.currentQuestionId) ?? null;
+  }
+
+  private logQuestionDatabaseError(operation: string, error: unknown): void {
+    console.error(JSON.stringify({
+      error: "QUESTION_DATABASE_UNAVAILABLE",
+      operation,
+      message: error instanceof Error ? error.message : String(error),
+    }));
   }
 
   private errorMessage(code: GameErrorCode): string {

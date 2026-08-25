@@ -4,10 +4,11 @@ import { MAP_SCORE, MAX_LOCATION_DISTANCE, MAX_LOCATION_SCORE, distanceBetween, 
 
 const question: Question = {
   id: "test",
-  imageAssetId: "test-asset-id",
+  imageAssetKey: "questions/test-asset-id.webp",
   correctMapId: "mirage",
   correctLayerId: "main",
   correctPoint: { x: 0.5, y: 0.5 },
+  automaticPoint: { x: 0.5, y: 0.5 },
   worldPosition: { x: 0, y: 0, z: 0 },
   coordinateSource: "world-conversion",
 };

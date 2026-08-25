@@ -5,6 +5,7 @@ import type { RadarProviderResult } from "../../src/content/radarProvider";
 export const projectRoot = resolve(import.meta.dirname, "..", "..");
 export const generatedRoot = join(projectRoot, "content", "generated");
 export const radarRoot = join(generatedRoot, "radars");
+export const publicDevAssetsRoot = join(projectRoot, "public", "__dev_assets__");
 
 export function writeRadarRegistry(result: RadarProviderResult): string {
   mkdirSync(generatedRoot, { recursive: true });

@@ -1,1 +1,92 @@
-[]
+[
+  {
+    "sourceId": "mirage-01",
+    "sourceImageSha256": "e76210c8a1dbb9e368512a3c89d3bfc47d8bb4deec02db2292a7e21bb32d3744",
+    "sourceImageName": "mirage-01.jpg",
+    "questionId": "q-c13aa7e7c0cf4521",
+    "imageAssetId": "8f8db6fe6e1448dc942e98462c36c55c",
+    "importedAt": "2026-08-24T18:20:39.663Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-02",
+    "sourceImageSha256": "58805bffbe5c8d4a12457e8b9707e6808cec8b52e55e0dd5e9ddb375c58b1e64",
+    "sourceImageName": "mirage-02.jpg",
+    "questionId": "q-3284227f476c40ac",
+    "imageAssetId": "6e70bdd234ea4c839fb042393af2fe56",
+    "importedAt": "2026-08-24T18:20:43.623Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-03",
+    "sourceImageSha256": "5e6ccdcfc5d5be115e96561d7c197731b2f4155ed62968949a26a0d99679b738",
+    "sourceImageName": "mirage-03.jpg",
+    "questionId": "q-421634270d3841ad",
+    "imageAssetId": "34469766dd414f2b89e42a3e40315f96",
+    "importedAt": "2026-08-24T18:20:47.462Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-04",
+    "sourceImageSha256": "6a488115965b90abd355b7180cf39b543c289245fb940e41f19763cbbe36045f",
+    "sourceImageName": "mirage-04.jpg",
+    "questionId": "q-91a77519c1a44a8c",
+    "imageAssetId": "47da416a95864b5a92b75caa2470e714",
+    "importedAt": "2026-08-24T18:20:51.272Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-05",
+    "sourceImageSha256": "1ee4aa116d68dade36846405009cb5897c6afa4cece983d831c52e2c106c60a3",
+    "sourceImageName": "mirage-05.jpg",
+    "questionId": "q-f04b3ce873d24f70",
+    "imageAssetId": "ccf07f8973aa4122a0fbd2150bb1f717",
+    "importedAt": "2026-08-24T18:20:55.350Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-06",
+    "sourceImageSha256": "93a73b1f417b59c9e96ee6ce70d7aa54be67df8c45286d2c8672663a3fe76dab",
+    "sourceImageName": "mirage-06.jpg",
+    "questionId": "q-133759aec58f4395",
+    "imageAssetId": "69549511f6c84082b0ff4476b45a1fb5",
+    "importedAt": "2026-08-24T18:51:29.575Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-07",
+    "sourceImageSha256": "8bdef57ed0ae875a80d15f478d31a0ea3d01eedf29644daf4d7fe1e6e42362a3",
+    "sourceImageName": "mirage-07.jpg",
+    "questionId": "q-4b1ca4aaac784007",
+    "imageAssetId": "cb2ef5c0e14845d0bda0a96e4fa3c49b",
+    "importedAt": "2026-08-24T18:51:43.005Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-08",
+    "sourceImageSha256": "8a018f0b1e10fb9f0b3ab1a0fc0b9e67652f24ab9d3a02a8512cd56ae9d66c8b",
+    "sourceImageName": "mirage-08.jpg",
+    "questionId": "q-79daed33b6a84e29",
+    "imageAssetId": "3b707a765cb4484b9ab6b14e7be90318",
+    "importedAt": "2026-08-24T18:51:55.425Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-09",
+    "sourceImageSha256": "d525b24824471552a59af491566b27c175480889242c4737b51f1b8871719caf",
+    "sourceImageName": "mirage-09.png",
+    "questionId": "q-f81397223ef54cda",
+    "imageAssetId": "36198aa9576e4842bcb1b3e14b91020e",
+    "importedAt": "2026-08-24T18:52:22.038Z",
+    "mapId": "mirage"
+  },
+  {
+    "sourceId": "mirage-10",
+    "sourceImageSha256": "2da6e789b9db229186ff4068deee47160ab3f1156536b64463c501eff2cae944",
+    "sourceImageName": "mirage-10.png",
+    "questionId": "q-26d0c63e2f0e4c37",
+    "imageAssetId": "e5393e37c18640a28db182765d9464d4",
+    "importedAt": "2026-08-24T18:52:32.096Z",
+    "mapId": "mirage"
+  }
+]

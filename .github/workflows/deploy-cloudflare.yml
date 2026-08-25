@@ -59,3 +59,17 @@ jobs:
 
       - name: Deploy Worker
         run: npx wrangler deploy
+
+      - name: Configure protected question editor in Cloudflare Access
+        id: admin-access
+        run: node scripts/cloudflare/configure-admin-access.mjs
+
+      - name: Configure Worker-side Access JWT validation
+        shell: bash
+        env:
+          ACCESS_AUD: ${{ steps.admin-access.outputs.access_aud }}
+          ACCESS_TEAM_DOMAIN: ${{ steps.admin-access.outputs.team_domain }}
+        run: |
+          node -e 'const fs=require("node:fs"); fs.writeFileSync(process.argv[1], JSON.stringify({ACCESS_AUD:process.env.ACCESS_AUD,ACCESS_TEAM_DOMAIN:process.env.ACCESS_TEAM_DOMAIN}));' "$RUNNER_TEMP/admin-access-secrets.json"
+          npx wrangler secret bulk "$RUNNER_TEMP/admin-access-secrets.json"
+          rm -f "$RUNNER_TEMP/admin-access-secrets.json"

@@ -40,6 +40,12 @@ export function Lobby({
       {room.questionCount === 0 && (
         <div className="content-empty-state"><strong>NO REAL QUESTIONS AVAILABLE</strong><span>Import a real CS2 question first.</span></div>
       )}
+      {room.questionCount > 0 && (
+        <div className="content-available-state">
+          <strong>{room.questionCount} REAL QUESTION{room.questionCount === 1 ? "" : "S"} AVAILABLE</strong>
+          <span>This match will use {Math.min(5, room.questionCount)} verified round{Math.min(5, room.questionCount) === 1 ? "" : "s"}.</span>
+        </div>
+      )}
       <button className="primary-button ready-button" disabled={me?.ready || room.questionCount === 0} onClick={onReady}>
         {me?.ready ? "YOU'RE READY" : "READY UP"}
       </button>

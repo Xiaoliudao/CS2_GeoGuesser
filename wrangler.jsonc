@@ -1,34 +1,53 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cs2-map-guesser",
-  "main": "src/worker/index.ts",
-  "compatibility_date": "2026-08-24",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/ws/*", "/media/*"]
-  },
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cs2-map-guesser",
+	"main": "src/worker/index.ts",
+	"compatibility_date": "2026-08-24",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*",
+			"/admin/api/*",
+			"/ws/*",
+			"/media/*"
+		]
+	},
   "r2_buckets": [
+		{
+			"binding": "GAME_ASSETS",
+			"bucket_name": "cs2-map-guesser-assets",
+			"remote": true
+    }
+  ],
+  "d1_databases": [
     {
-      "binding": "GAME_ASSETS",
-      "bucket_name": "cs2-map-guesser-assets"
+      "binding": "QUESTIONS_DB",
+      "database_name": "cs2-map-guesser-db",
+      "database_id": "39f60ebc-6f28-4a64-972c-2911d8cf65d8",
+      "migrations_dir": "migrations",
+      "remote": true
     }
   ],
   "durable_objects": {
-    "bindings": [
-      {
-        "name": "GAME_ROOM",
-        "class_name": "GameRoom"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["GameRoom"]
-    }
-  ],
-  "observability": {
-    "enabled": true
-  }
+		"bindings": [
+			{
+				"name": "GAME_ROOM",
+				"class_name": "GameRoom"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"GameRoom"
+			]
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
 }

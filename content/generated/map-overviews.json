@@ -2,7 +2,7 @@
   "provider": "github-extracted",
   "providerUrl": "https://github.com/MurkyYT/cs2-map-icons",
   "sourceBuildId": "github-index:94042f894a9252ae",
-  "syncedAt": "2026-08-24T17:19:06.958Z",
+  "syncedAt": "2026-08-24T17:41:41.717Z",
   "artifacts": [
     {
       "mapId": "mirage",
@@ -154,7 +154,7 @@
           "radarHeight": 1024
         }
       ],
-      "extractedAt": "2026-08-24T17:18:52.985Z",
+      "extractedAt": "2026-08-24T17:41:25.840Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "inferno": {
@@ -173,7 +173,7 @@
           "radarHeight": 1024
         }
       ],
-      "extractedAt": "2026-08-24T17:18:53.888Z",
+      "extractedAt": "2026-08-24T17:41:26.736Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "ancient": {
@@ -192,7 +192,7 @@
           "radarHeight": 1024
         }
       ],
-      "extractedAt": "2026-08-24T17:18:54.641Z",
+      "extractedAt": "2026-08-24T17:41:27.649Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "nuke": {
@@ -221,7 +221,7 @@
           "altitudeMax": -495
         }
       ],
-      "extractedAt": "2026-08-24T17:18:58.461Z",
+      "extractedAt": "2026-08-24T17:41:32.097Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "anubis": {
@@ -240,7 +240,7 @@
           "radarHeight": 1024
         }
       ],
-      "extractedAt": "2026-08-24T17:19:01.212Z",
+      "extractedAt": "2026-08-24T17:41:35.075Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "dust2": {
@@ -259,7 +259,7 @@
           "radarHeight": 1024
         }
       ],
-      "extractedAt": "2026-08-24T17:19:02.275Z",
+      "extractedAt": "2026-08-24T17:41:36.368Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "train": {
@@ -288,7 +288,7 @@
           "altitudeMax": -50
         }
       ],
-      "extractedAt": "2026-08-24T17:19:04.469Z",
+      "extractedAt": "2026-08-24T17:41:38.897Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     },
     "overpass": {
@@ -307,7 +307,7 @@
           "radarHeight": 1024
         }
       ],
-      "extractedAt": "2026-08-24T17:19:06.957Z",
+      "extractedAt": "2026-08-24T17:41:41.717Z",
       "sourceBuildId": "github-index:94042f894a9252ae"
     }
   }

@@ -7,6 +7,9 @@ export interface RadarPickerProps {
   value: MapPoint | null;
   onChange: (point: MapPoint) => void;
   disabled?: boolean;
+  radarUrl?: string;
+  markerLabel?: string;
+  markerMode?: "auto" | "manual";
 }
 
 export function pointFromImageRect(
@@ -21,7 +24,16 @@ export function pointFromImageRect(
   };
 }
 
-export function RadarPicker({ mapId, layerId, value, onChange, disabled = false }: RadarPickerProps) {
+export function RadarPicker({
+  mapId,
+  layerId,
+  value,
+  onChange,
+  disabled = false,
+  radarUrl,
+  markerLabel = "YOUR GUESS",
+  markerMode = "manual",
+}: RadarPickerProps) {
   const map = getMap(mapId);
   const layer = getRadarLayer(mapId, layerId);
   if (!layer) throw new Error(`Unknown radar layer ${mapId}/${layerId}.`);
@@ -29,7 +41,7 @@ export function RadarPicker({ mapId, layerId, value, onChange, disabled = false 
     <div className={`radar-picker ${disabled ? "is-disabled" : ""}`}>
       <div className="radar-image-wrap">
         <img
-          src={layer.radarUrl}
+          src={radarUrl ?? layer.radarUrl}
           alt={`${map.name} ${layer.name.toLowerCase()} radar. Click to place your guess.`}
           draggable={false}
           onClick={(event) => {
@@ -39,12 +51,12 @@ export function RadarPicker({ mapId, layerId, value, onChange, disabled = false 
         />
         {value && (
           <span
-            className="radar-marker guess-marker"
+            className={`radar-marker guess-marker ${markerMode === "auto" ? "is-auto" : "is-manual"}`}
             style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%` }}
             aria-label={`Guess at ${(value.x * 100).toFixed(1)}%, ${(value.y * 100).toFixed(1)}%`}
           >
             <i />
-            <b>YOUR GUESS</b>
+            <b>{markerLabel}</b>
           </span>
         )}
       </div>

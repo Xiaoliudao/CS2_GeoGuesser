@@ -1,1 +1,252 @@
-[]
+[
+  {
+    "id": "q-c13aa7e7c0cf4521",
+    "imageAssetId": "8f8db6fe6e1448dc942e98462c36c55c",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.8998103619140625,
+      "y": 0.333324471484375
+    },
+    "automaticPoint": {
+      "x": 0.8998103619140625,
+      "y": 0.333324471484375
+    },
+    "worldPosition": {
+      "x": 1377.029053,
+      "y": 6.378706,
+      "z": -91.096069
+    },
+    "viewAngle": {
+      "pitch": -14.257507,
+      "yaw": -87.041931,
+      "roll": 0
+    },
+    "coordinateSource": "world-conversion"
+  },
+  {
+    "id": "q-3284227f476c40ac",
+    "imageAssetId": "6e70bdd234ea4c839fb042393af2fe56",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.8667086125000001,
+      "y": 0.5635692833984376
+    },
+    "automaticPoint": {
+      "x": 0.8667086125000001,
+      "y": 0.5635692833984376
+    },
+    "worldPosition": {
+      "x": 1207.548096,
+      "y": -1172.474731,
+      "z": -68.692139
+    },
+    "viewAngle": {
+      "pitch": -14.257507,
+      "yaw": -87.041931,
+      "roll": 0
+    },
+    "coordinateSource": "world-conversion"
+  },
+  {
+    "id": "q-421634270d3841ad",
+    "imageAssetId": "34469766dd414f2b89e42a3e40315f96",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.857123637109375,
+      "y": 0.3781014203125
+    },
+    "automaticPoint": {
+      "x": 0.857123637109375,
+      "y": 0.3781014203125
+    },
+    "worldPosition": {
+      "x": 1158.473022,
+      "y": -222.879272,
+      "z": -29.223511
+    },
+    "viewAngle": {
+      "pitch": -14.257507,
+      "yaw": -87.041931,
+      "roll": 0
+    },
+    "coordinateSource": "world-conversion"
+  },
+  {
+    "id": "q-91a77519c1a44a8c",
+    "imageAssetId": "47da416a95864b5a92b75caa2470e714",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.8992914393099445,
+      "y": 0.6077935073545662
+    },
+    "automaticPoint": {
+      "x": 0.8866281509765624,
+      "y": 0.6146256685546876
+    },
+    "worldPosition": {
+      "x": 1309.536133,
+      "y": -1433.883423,
+      "z": -87.28894
+    },
+    "viewAngle": {
+      "pitch": -14.257507,
+      "yaw": -87.041931,
+      "roll": 0
+    },
+    "coordinateSource": "manual-override"
+  },
+  {
+    "id": "q-f04b3ce873d24f70",
+    "imageAssetId": "ccf07f8973aa4122a0fbd2150bb1f717",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.748277223046875,
+      "y": 0.7818789005859375
+    },
+    "automaticPoint": {
+      "x": 0.748277223046875,
+      "y": 0.7818789005859375
+    },
+    "worldPosition": {
+      "x": 601.179382,
+      "y": -2290.219971,
+      "z": 31.393957
+    },
+    "viewAngle": {
+      "pitch": -14.257507,
+      "yaw": -87.041931,
+      "roll": 0
+    },
+    "coordinateSource": "world-conversion"
+  },
+  {
+    "id": "q-133759aec58f4395",
+    "imageAssetId": "69549511f6c84082b0ff4476b45a1fb5",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.8415991333996504,
+      "y": 0.691295529066834
+    },
+    "automaticPoint": {
+      "x": 0.826281392578125,
+      "y": 0.693393945703125
+    },
+    "worldPosition": {
+      "x": 1000.56073,
+      "y": -1837.177002,
+      "z": 116.040932
+    },
+    "viewAngle": {
+      "pitch": -13.894623,
+      "yaw": -112.81517,
+      "roll": 0
+    },
+    "coordinateSource": "manual-override"
+  },
+  {
+    "id": "q-4b1ca4aaac784007",
+    "imageAssetId": "cb2ef5c0e14845d0bda0a96e4fa3c49b",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.6973683686239152,
+      "y": 0.7171052448688077
+    },
+    "automaticPoint": {
+      "x": 0.6959160505859374,
+      "y": 0.7343080521484374
+    },
+    "worldPosition": {
+      "x": 333.090179,
+      "y": -2046.657227,
+      "z": 27.938101
+    },
+    "viewAngle": {
+      "pitch": -13.894623,
+      "yaw": -112.81517,
+      "roll": 0
+    },
+    "coordinateSource": "manual-override"
+  },
+  {
+    "id": "q-79daed33b6a84e29",
+    "imageAssetId": "3b707a765cb4484b9ab6b14e7be90318",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.6928137128941552,
+      "y": 0.7520242837133899
+    },
+    "automaticPoint": {
+      "x": 0.701800537109375,
+      "y": 0.7462812900390625
+    },
+    "worldPosition": {
+      "x": 363.21875,
+      "y": -2107.960205,
+      "z": 36.84869
+    },
+    "viewAngle": {
+      "pitch": -13.894623,
+      "yaw": -112.81517,
+      "roll": 0
+    },
+    "coordinateSource": "manual-override"
+  },
+  {
+    "id": "q-f81397223ef54cda",
+    "imageAssetId": "36198aa9576e4842bcb1b3e14b91020e",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.6336031884072744,
+      "y": 0.7914979551215553
+    },
+    "automaticPoint": {
+      "x": 0.6789433001953125,
+      "y": 0.7867380142578125
+    },
+    "worldPosition": {
+      "x": 246.189697,
+      "y": -2315.098633,
+      "z": 57.854271
+    },
+    "viewAngle": {
+      "pitch": -13.894623,
+      "yaw": -112.81517,
+      "roll": 0
+    },
+    "coordinateSource": "manual-override"
+  },
+  {
+    "id": "q-26d0c63e2f0e4c37",
+    "imageAssetId": "e5393e37c18640a28db182765d9464d4",
+    "correctMapId": "mirage",
+    "correctLayerId": "main",
+    "correctPoint": {
+      "x": 0.6548582484794879,
+      "y": 0.7246963493348295
+    },
+    "automaticPoint": {
+      "x": 0.6331076861328124,
+      "y": 0.7189938544921874
+    },
+    "worldPosition": {
+      "x": 11.511353,
+      "y": -1968.248535,
+      "z": -92.27301
+    },
+    "viewAngle": {
+      "pitch": -13.894623,
+      "yaw": -112.81517,
+      "roll": 0
+    },
+    "coordinateSource": "manual-override"
+  }
+]
