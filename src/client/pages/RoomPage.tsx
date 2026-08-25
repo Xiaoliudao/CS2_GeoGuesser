@@ -14,7 +14,16 @@ import { getNickname, getPlayerId } from "../lib/identity";
 export function RoomPage({ roomCode }: { roomCode: string }) {
   const nickname = useMemo(getNickname, []);
   const playerId = useMemo(getPlayerId, []);
-  const { room, connection, rttMs, error, clearError, send } = useGameSocket(roomCode, playerId, nickname);
+  const {
+    room,
+    connection,
+    rttMs,
+    serverClockOffsetMs,
+    clockSynchronized,
+    error,
+    clearError,
+    send,
+  } = useGameSocket(roomCode, playerId, nickname);
   const preparation = useRoundPreparation(room, playerId, send);
 
   useEffect(() => {
@@ -71,7 +80,13 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
         />
       )}
       {room?.status === "playing" && (
-        <GameScreen room={room} playerId={playerId} onSend={sendEvent} />
+        <GameScreen
+          room={room}
+          playerId={playerId}
+          serverClockOffsetMs={serverClockOffsetMs}
+          clockSynchronized={clockSynchronized}
+          onSend={sendEvent}
+        />
       )}
       {room?.status === "round_result" && <RoundResult room={room} playerId={playerId} />}
       {room?.status === "finished" && (

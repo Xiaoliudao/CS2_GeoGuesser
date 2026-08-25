@@ -64,4 +64,19 @@ describe("normalized point validation", () => {
       payload: { round: 2, questionId: "q-opaque123456", reason: "stack trace: token=secret" },
     }).success).toBe(false);
   });
+
+  it("accepts authoritative clock pings while retaining rolling-deploy compatibility", () => {
+    expect(clientEventSchema.safeParse({
+      type: "ping",
+      payload: { clientSentAt: 1_787_670_123_000 },
+    }).success).toBe(true);
+    expect(clientEventSchema.safeParse({
+      type: "ping",
+      payload: { sentAt: 1_787_670_123_000 },
+    }).success).toBe(true);
+    expect(clientEventSchema.safeParse({
+      type: "ping",
+      payload: { clientSentAt: Number.NaN },
+    }).success).toBe(false);
+  });
 });

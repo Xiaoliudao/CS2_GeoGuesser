@@ -36,7 +36,10 @@ export const clientEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal(CLIENT_EVENTS.SYNC) }),
   z.object({
     type: z.literal(CLIENT_EVENTS.PING),
-    payload: z.object({ sentAt: z.number().optional() }).optional(),
+    payload: z.union([
+      z.object({ clientSentAt: z.number().finite() }).strict(),
+      z.object({ sentAt: z.number().finite() }).strict(),
+    ]),
   }),
   z.object({
     type: z.literal(CLIENT_EVENTS.ROUND_ASSET_READY),

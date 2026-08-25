@@ -37,7 +37,7 @@ export type ClientEvent =
       payload: { round: number; eventId: string; mapId: MapId; layerId: RadarLayerId; point: MapPoint };
     }
   | { type: "room:sync" }
-  | { type: "ping"; payload?: { sentAt?: number } }
+  | { type: "ping"; payload: { clientSentAt: number } }
   | {
       type: "round:asset-ready";
       payload: { round: number; questionId: string; loadMs?: number };
@@ -73,7 +73,10 @@ export type ServerEvent =
         questionId: string;
         imageUrl: string;
         round: number;
+        serverNow: number;
+        roundStartedAt: number;
         roundEndsAt: number;
+        roundDurationSeconds: number;
         stateVersion: number;
       };
     }
@@ -84,4 +87,4 @@ export type ServerEvent =
   | { type: "round:end"; payload: RoundResultState & { stateVersion: number } }
   | { type: "game:end"; payload: { state: GameRoomState } }
   | { type: "error"; payload: { code: GameErrorCode; message: string } }
-  | { type: "pong"; payload: { serverTime: number; sentAt?: number } };
+  | { type: "pong"; payload: { clientSentAt: number; serverNow: number } };

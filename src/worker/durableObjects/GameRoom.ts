@@ -6,7 +6,6 @@ import type { MapId, RadarLayerId } from "../../shared/maps";
 import { normalizePublicOrigin } from "../../shared/mediaUrls";
 import {
   RoomSettingsSchema,
-  roundDeadline,
   roomSettingsFromStorage,
   roundDurationMs,
   type RoomSettings,
@@ -17,6 +16,7 @@ import type {
   MapPoint,
   PlayerRoundResult,
   PublicPlayer,
+  RoundTiming,
   RoundResultState,
   RoomStatus,
 } from "../../shared/types";
@@ -32,6 +32,7 @@ import {
 } from "../game/assetPreparation";
 import { scoreVisibleToViewer, validateGuess } from "../game/roomState";
 import { normalizeScore, scoreGuess } from "../game/scoring";
+import { createPlayingRoundTiming, createPreparingRoundTiming } from "../game/roundTiming";
 import { QuestionRepository } from "../questions/QuestionRepository";
 
 const STATE_KEY = "room-state";
@@ -64,7 +65,7 @@ interface StoredGuess {
   points: number;
 }
 
-interface InternalRoomState {
+interface InternalRoomState extends RoundTiming {
   schemaVersion: 7;
   roomCode: string;
   status: RoomStatus;
@@ -75,11 +76,8 @@ interface InternalRoomState {
   questionSnapshot: ServerQuestion[];
   questionCursor: number;
   currentQuestionId: string | null;
-  prepareDeadline: number | null;
   assetPrepareAttempt: number;
   assetReady: Record<string, boolean>;
-  roundStartedAt: number | null;
-  roundEndsAt: number | null;
   resultEndsAt: number | null;
   guesses: Record<string, StoredGuess>;
   processedEventIds: string[];
@@ -311,11 +309,12 @@ export class GameRoom extends DurableObject<Env> {
     }
 
     if (event.type === "ping") {
+      const clientSentAt = "clientSentAt" in event.payload ? event.payload.clientSentAt : event.payload.sentAt;
       this.send(socket, {
         type: "pong",
         payload: {
-          serverTime: Date.now(),
-          ...(event.payload?.sentAt !== undefined ? { sentAt: event.payload.sentAt } : {}),
+          clientSentAt,
+          serverNow: Date.now(),
         },
       });
       return;
@@ -525,7 +524,7 @@ export class GameRoom extends DurableObject<Env> {
     });
     if (allPlayersAssetReady(this.state.players.map((candidate) => candidate.id), this.state.assetReady)) {
       const now = Date.now();
-      this.startPreparedRound(now);
+      if (!this.startPreparedRound(now)) return;
       await this.commit();
       this.broadcastRoundStart();
       return;
@@ -603,11 +602,9 @@ export class GameRoom extends DurableObject<Env> {
     if (!retry) this.state.round += 1;
     this.state.questionCursor = nextQuestionIndex;
     this.state.currentQuestionId = question.id;
-    this.state.prepareDeadline = now + ASSET_PREPARE_TIMEOUT_MS;
+    Object.assign(this.state, createPreparingRoundTiming(now, ASSET_PREPARE_TIMEOUT_MS));
     this.state.assetPrepareAttempt = retry ? this.state.assetPrepareAttempt + 1 : 0;
     this.state.assetReady = Object.fromEntries(this.state.players.map((player) => [player.id, false]));
-    this.state.roundStartedAt = null;
-    this.state.roundEndsAt = null;
     this.state.resultEndsAt = null;
     this.state.guesses = {};
     this.state.processedEventIds = [];
@@ -620,17 +617,18 @@ export class GameRoom extends DurableObject<Env> {
     });
   }
 
-  private startPreparedRound(now: number): void {
-    if (!this.state || this.state.status !== "round_preparing" || !this.state.currentQuestionId) return;
+  private startPreparedRound(now: number): boolean {
+    if (!this.state) return false;
+    const timing = createPlayingRoundTiming(this.state.status, this.state.currentQuestionId, now, this.state.settings);
+    if (!timing) return false;
     this.state.status = "playing";
-    this.state.prepareDeadline = null;
-    this.state.roundStartedAt = now;
-    this.state.roundEndsAt = roundDeadline(now, this.state.settings);
+    Object.assign(this.state, timing);
     this.logGameEvent("ROUND_STARTED", {
       round: this.state.round,
       attempt: this.state.assetPrepareAttempt,
       durationMs: roundDurationMs(this.state.settings),
     });
+    return true;
   }
 
   private retryAssetPreparation(now: number, reason: AssetLoadErrorReason | "TIMEOUT"): boolean {
@@ -771,7 +769,7 @@ export class GameRoom extends DurableObject<Env> {
     } else await this.scheduleAlarm();
   }
 
-  private publicState(viewerPlayerId: string | null): GameRoomState {
+  private publicState(viewerPlayerId: string | null, serverNow = Date.now()): GameRoomState {
     if (!this.state) throw new Error("Room is not initialized");
     const state = this.state;
     const question = this.currentQuestion();
@@ -818,6 +816,7 @@ export class GameRoom extends DurableObject<Env> {
       assetOrigin,
       failureCode: state.failureCode,
       stateVersion: state.stateVersion,
+      serverNow,
     };
   }
 
@@ -838,16 +837,17 @@ export class GameRoom extends DurableObject<Env> {
     else await this.ctx.storage.deleteAlarm();
   }
 
-  private sendState(socket: WebSocket): void {
+  private sendState(socket: WebSocket, serverNow = Date.now()): void {
     if (!this.state) return;
     this.send(socket, {
       type: "room:state",
-      payload: this.publicState(this.getAttachment(socket).playerId),
+      payload: this.publicState(this.getAttachment(socket).playerId, serverNow),
     });
   }
 
   private broadcastState(): void {
-    for (const socket of this.ctx.getWebSockets()) this.sendState(socket);
+    const serverNow = Date.now();
+    for (const socket of this.ctx.getWebSockets()) this.sendState(socket, serverNow);
   }
 
   private broadcast(event: ServerEvent): void {
@@ -871,15 +871,24 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private broadcastRoundStart(): void {
-    if (!this.state || this.state.status !== "playing" || this.state.roundEndsAt === null) return;
+    if (
+      !this.state
+      || this.state.status !== "playing"
+      || this.state.roundStartedAt === null
+      || this.state.roundEndsAt === null
+    ) return;
     const question = this.currentQuestion();
     if (!question) return;
+    const serverNow = Date.now();
     this.broadcast({
       type: "round:start",
       payload: {
         ...toPublicQuestion(question, this.env.PUBLIC_ASSET_ORIGIN),
         round: this.state.round,
+        serverNow,
+        roundStartedAt: this.state.roundStartedAt,
         roundEndsAt: this.state.roundEndsAt,
+        roundDurationSeconds: this.state.settings.roundDurationSeconds,
         stateVersion: this.state.stateVersion,
       },
     });

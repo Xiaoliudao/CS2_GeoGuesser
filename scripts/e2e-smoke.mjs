@@ -8,6 +8,8 @@ class TestClient {
     this.roomCode = roomCode;
     this.lastState = null;
     this.lastError = null;
+    this.roundStarts = [];
+    this.lastPong = null;
   }
 
   async connect() {
@@ -15,6 +17,8 @@ class TestClient {
     this.socket.addEventListener("message", (message) => {
       const event = JSON.parse(String(message.data));
       if (event.type === "room:state") this.lastState = event.payload;
+      if (event.type === "round:start") this.roundStarts.push(event.payload);
+      if (event.type === "pong") this.lastPong = event.payload;
       if (event.type === "error") this.lastError = event.payload;
     });
     await new Promise((resolve, reject) => {
@@ -27,6 +31,29 @@ class TestClient {
     });
     this.send({ type: "player:join", payload: { playerId: this.playerId, nickname: this.name } });
     await this.waitFor((state) => state.players.some((player) => player.id === this.playerId));
+    const clientSentAt = Date.now();
+    this.send({ type: "ping", payload: { clientSentAt } });
+    const pong = await this.waitForPong(clientSentAt);
+    if (!Number.isFinite(pong.serverNow)) throw new Error(`${this.name} pong omitted serverNow`);
+  }
+
+  async waitForPong(clientSentAt, timeoutMs = 8_000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (this.lastPong?.clientSentAt === clientSentAt) return this.lastPong;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`${this.name} timed out waiting for authoritative clock pong`);
+  }
+
+  async waitForRoundStart(round, timeoutMs = 8_000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const payload = this.roundStarts.find((candidate) => candidate.round === round);
+      if (payload) return payload;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`${this.name} timed out waiting for round:start ${round}`);
   }
 
   async waitForError(code, timeoutMs = 8_000) {
@@ -80,7 +107,7 @@ const availableMapPool = Object.entries(availability.byMap)
   .map(([mapId]) => mapId);
 const requestedSettings = {
   totalRounds: Math.min(5, availability.availableQuestions),
-  roundDurationSeconds: 15,
+  roundDurationSeconds: 20,
   mapPool: availableMapPool,
   serverRegion: "auto",
 };
@@ -166,6 +193,15 @@ try {
   });
   const onePlayerReady = await activeAlpha.waitFor((state) => state.status === "round_preparing" && state.players.find((player) => player.id === alpha.playerId)?.assetReady);
   assert(onePlayerReady.roundStartedAt === null && onePlayerReady.roundEndsAt === null, "One ready player started the timer");
+  activeAlpha.send({
+    type: "round:asset-ready",
+    payload: { round: 1, questionId: alphaPreparing.currentQuestion.questionId, loadMs: 2_000 },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const duplicateReadyState = activeAlpha.lastState;
+  assert(duplicateReadyState.roundStartedAt === null && duplicateReadyState.roundEndsAt === null, "Duplicate asset-ready started or restarted the round");
+  assert(duplicateReadyState.prepareDeadline === onePlayerReady.prepareDeadline, "Duplicate asset-ready changed the prepare deadline");
+  assert(!activeAlpha.roundStarts.some((payload) => payload.round === 1), "Duplicate asset-ready emitted round:start");
   bravo.send({
     type: "round:asset-ready",
     payload: { round: 1, questionId: bravoPreparing.currentQuestion.questionId, loadMs: 7_000 },
@@ -174,11 +210,21 @@ try {
     activeAlpha.waitFor((state) => state.status === "playing" && state.round === 1),
     bravo.waitFor((state) => state.status === "playing" && state.round === 1),
   ]);
+  const [alphaRoundStart, bravoRoundStart] = await Promise.all([
+    activeAlpha.waitForRoundStart(1),
+    bravo.waitForRoundStart(1),
+  ]);
 
   let currentAlphaRound = alphaRound;
   let currentBravoRound = bravoRound;
   assert(JSON.stringify(alphaRound.settings) === JSON.stringify(requestedSettings), "Playing state changed RoomSettings");
   assert(alphaRound.roundEndsAt - alphaRound.roundStartedAt === requestedSettings.roundDurationSeconds * 1_000, "Round deadline ignored RoomSettings");
+  assert(alphaRoundStart.roundStartedAt === bravoRoundStart.roundStartedAt, "round:start sent different start times to the two players");
+  assert(alphaRoundStart.roundEndsAt === bravoRoundStart.roundEndsAt, "round:start sent different deadlines to the two players");
+  assert(alphaRoundStart.roundEndsAt - alphaRoundStart.roundStartedAt === requestedSettings.roundDurationSeconds * 1_000, "round:start duration included prepare time");
+  assert(alphaRoundStart.roundDurationSeconds === requestedSettings.roundDurationSeconds, "round:start duration disagrees with RoomSettings");
+  assert(Number.isFinite(alphaRoundStart.serverNow), "round:start did not include serverNow");
+  assert(alphaRoundStart.stateVersion === bravoRoundStart.stateVersion, "round:start state versions differ");
   const roundsToPlay = alphaRound.settings.totalRounds;
   for (let round = 1; round <= roundsToPlay; round += 1) {
     assert(currentAlphaRound.currentQuestion.questionId === currentBravoRound.currentQuestion.questionId, `Round ${round} question IDs differ`);
@@ -279,6 +325,8 @@ try {
     reconnectRestored: true,
     prepareReconnectRestored: true,
     timerWaitedForBothAssets: true,
+    duplicateAssetReadyIgnored: true,
+    authoritativeRoundStartVerified: true,
     assetReplacementVerified: availability.availableQuestions > requestedSettings.totalRounds,
     realMediaRoutesVerified: true,
     gameFinished: true,

@@ -52,7 +52,13 @@ export interface RoundResultState {
   nextRoundAt: number;
 }
 
-export interface GameRoomState {
+export interface RoundTiming {
+  prepareDeadline: number | null;
+  roundStartedAt: number | null;
+  roundEndsAt: number | null;
+}
+
+export interface GameRoomState extends RoundTiming {
   roomCode: string;
   status: RoomStatus;
   settings: RoomSettings;
@@ -61,14 +67,12 @@ export interface GameRoomState {
   questionCount: number;
   currentQuestion: PublicQuestion | null;
   nextQuestion: PublicQuestion | null;
-  prepareDeadline: number | null;
   assetPrepareAttempt: number;
-  roundStartedAt: number | null;
-  roundEndsAt: number | null;
   roundResult: RoundResultState | null;
   assetOrigin: string;
   failureCode: GameErrorCode | null;
   stateVersion: number;
+  serverNow: number;
 }
 
 export type GameErrorCode =
