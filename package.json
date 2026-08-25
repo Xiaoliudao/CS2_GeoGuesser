@@ -24,6 +24,7 @@
     "questions:enable": "tsx scripts/content/questions-d1-cli.ts enable",
     "questions:update-point": "tsx scripts/content/questions-d1-cli.ts update-point",
     "questions:update": "tsx scripts/content/questions-d1-cli.ts update-point",
+    "questions:recalculate-coordinates": "tsx scripts/content/questions-recalculate-coordinates.ts",
     "questions:export": "tsx scripts/content/questions-d1-cli.ts export",
     "db:migrate:remote": "wrangler d1 migrations apply cs2-map-guesser-db --remote",
     "assets:upload": "tsx scripts/content/assets-upload.ts"

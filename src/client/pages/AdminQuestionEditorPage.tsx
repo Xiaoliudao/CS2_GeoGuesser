@@ -8,7 +8,7 @@ import type {
 import { parseGetpos, type ParsedGetpos } from "../../content/getpos";
 import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, MAPS, type MapId, type RadarLayerId } from "../../shared/maps";
-import { selectRadarLayer, worldToRadarPoint } from "../../shared/radarCoordinates";
+import { selectRadarLayer, traceWorldToRadarPoint } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import { RadarPicker } from "../components/RadarPicker";
 
@@ -135,7 +135,20 @@ export function AdminQuestionEditorPage() {
       const layer = selectRadarLayer(parsed.worldPosition, overview);
       const layerDefinition = getMap(uploadMapId).layers.find((candidate) => candidate.id === layer.id);
       if (!layerDefinition) throw new Error("COORDINATE_LAYER_UNAVAILABLE");
-      const point = worldToRadarPoint(parsed.worldPosition, overview, layer);
+      const diagnostic = traceWorldToRadarPoint(parsed.worldPosition, overview, layer);
+      const point = diagnostic.final;
+      if (import.meta.env.DEV) {
+        console.info(JSON.stringify({
+          event: "RADAR_COORDINATE_TRACE",
+          worldPosition: parsed.worldPosition,
+          ...diagnostic,
+          css: {
+            radarImageTransform: "none",
+            radarImageObjectFit: "native aspect ratio (width: 100%; height: auto)",
+            markerTransform: "translate(-50%, -50%)",
+          },
+        }));
+      }
       setUploadLayerId(layerDefinition.id);
       setUploadPoint(point);
       setParsedCoordinates(parsed);

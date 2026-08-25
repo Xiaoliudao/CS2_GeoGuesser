@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAP_OVERVIEWS } from "./mapOverviews.generated";
 import { MAP_IDS } from "./maps";
-import { selectRadarLayer, worldToRadarPoint, type MapOverview } from "./radarCoordinates";
+import { selectRadarLayer, traceWorldToRadarPoint, worldToRadarPoint, type MapOverview } from "./radarCoordinates";
 
 const mirage: MapOverview = {
   mapId: "mirage", sourceName: "de_mirage", posX: -3230, posY: 1713, scale: 5, rotate: 0, zoom: 1,
@@ -28,9 +28,65 @@ describe("world to radar conversion", () => {
     expect(() => worldToRadarPoint({ x: -9000, y: 1713, z: 0 }, mirage, mirage.layers[0])).toThrow(/outside/);
   });
 
-  it("applies extracted rotation around the actual image center", () => {
+  it("does not apply Valve presentation rotation to an already oriented radar asset", () => {
     const rotated = { ...mirage, posX: 0, posY: 0, scale: 1, rotate: 1, layers: [{ ...mirage.layers[0], radarWidth: 100, radarHeight: 100 }] };
-    expect(worldToRadarPoint({ x: 60, y: -50, z: 0 }, rotated, rotated.layers[0])).toEqual({ x: 0.5, y: 0.6 });
+    expect(worldToRadarPoint({ x: 60, y: -50, z: 0 }, rotated, rotated.layers[0])).toEqual({ x: 0.6, y: 0.5 });
+  });
+
+  it("keeps every synchronized map in the same top-left normalized coordinate system", () => {
+    for (const overview of Object.values(MAP_OVERVIEWS)) {
+      for (const layer of overview.layers) {
+        const world = {
+          x: overview.posX + layer.radarWidth * overview.scale * 0.25,
+          y: overview.posY - layer.radarHeight * overview.scale * 0.75,
+          z: layer.altitudeMin ?? 0,
+        };
+        const point = worldToRadarPoint(world, overview, layer);
+        expect(point.x, `${overview.mapId}/${layer.id} x`).toBeCloseTo(0.25, 12);
+        expect(point.y, `${overview.mapId}/${layer.id} y`).toBeCloseTo(0.75, 12);
+      }
+    }
+  });
+
+  it("maps the real Dust II position to the verified lower-left region", () => {
+    const overview = MAP_OVERVIEWS.dust2;
+    const world = { x: -1248.585815, y: -246.164001, z: 191.263901 };
+    const diagnostic = traceWorldToRadarPoint(world, overview, overview.layers[0]);
+    expect(diagnostic).toMatchObject({
+      overview: { posX: -2476, posY: 3239, scale: 4.4, rotate: 1 },
+      coordinateTransform: "none",
+      rotateMetadataApplied: false,
+      radarWidth: 1024,
+      radarHeight: 1024,
+    });
+    expect(diagnostic.rawPixelX).toBeCloseTo(278.957769318, 9);
+    expect(diagnostic.rawPixelY).toBeCloseTo(792.0827275, 9);
+    expect(diagnostic.final.x).toBeCloseTo(0.2724196966, 9);
+    expect(diagnostic.final.y).toBeCloseTo(0.7735182886, 9);
+    expect(diagnostic.final.x).toBeLessThan(0.5);
+    expect(diagnostic.final.y).toBeGreaterThan(0.5);
+  });
+
+  it("matches Dust II overview landmarks spread across the displayed asset", () => {
+    const overview = MAP_OVERVIEWS.dust2;
+    const layer = overview.layers[0];
+    const landmarks = [
+      { name: "T spawn", point: { x: 0.39, y: 0.91 } },
+      { name: "CT spawn", point: { x: 0.62, y: 0.21 } },
+      { name: "A site", point: { x: 0.8, y: 0.16 } },
+      { name: "B site", point: { x: 0.21, y: 0.12 } },
+      { name: "center", point: { x: 0.5, y: 0.5 } },
+    ];
+    for (const landmark of landmarks) {
+      const world = {
+        x: overview.posX + landmark.point.x * layer.radarWidth * overview.scale,
+        y: overview.posY - landmark.point.y * layer.radarHeight * overview.scale,
+        z: 0,
+      };
+      const point = worldToRadarPoint(world, overview, layer);
+      expect(point.x, `${landmark.name} x`).toBeCloseTo(landmark.point.x, 12);
+      expect(point.y, `${landmark.name} y`).toBeCloseTo(landmark.point.y, 12);
+    }
   });
 
   it("selects Nuke floors only from extracted altitude sections", () => {

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { getFinalQuestionPoint, type QaPreviewQuestion, type PreviewQuestionStatus } from "../../content/questionPreview";
+import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, MAPS, type MapId, type RadarLayerId } from "../../shared/maps";
-import type { ViewAngle, WorldPosition } from "../../shared/radarCoordinates";
+import { traceWorldToRadarPoint, type ViewAngle, type WorldPosition } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import { RadarPicker } from "../components/RadarPicker";
 
@@ -143,6 +144,32 @@ export function QuestionEditorPage() {
   }, [availableQuestions, selectedKey]);
 
   const selectedQuestion = availableQuestions.find((question) => question.key === selectedKey);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || selectedQuestion?.kind !== "preview") return;
+    const overview = getMapOverview(selectedQuestion.mapId);
+    const layer = overview.layers.find((candidate) => candidate.id === selectedQuestion.layerId);
+    if (!layer) return;
+    try {
+      console.info(JSON.stringify({
+        event: "RADAR_COORDINATE_TRACE",
+        questionId: selectedQuestion.id,
+        worldPosition: selectedQuestion.worldPosition,
+        ...traceWorldToRadarPoint(selectedQuestion.worldPosition, overview, layer),
+        css: {
+          radarImageTransform: "none",
+          radarImageObjectFit: "native aspect ratio (width: 100%; height: auto)",
+          markerTransform: "translate(-50%, -50%)",
+        },
+      }));
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "RADAR_COORDINATE_TRACE_FAILED",
+        questionId: selectedQuestion.id,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }, [selectedQuestion?.key]);
 
   function replacePreview(question: QaPreviewQuestion): void {
     const replacement = previewQaQuestion(question);

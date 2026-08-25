@@ -89,6 +89,25 @@ describe("online admin question management", () => {
     expect(answer.automaticPoint).toEqual(answer.correctPoint);
   });
 
+  it("keeps the verified Dust II console position in the displayed lower-left", () => {
+    const answer = resolveWorldCoordinateAnswer(
+      "dust2",
+      "setpos_exact -1248.585815 -246.164001 191.263901;setang_exact -4.004517 88.254547 0.000000",
+    );
+    expect(answer).toMatchObject({
+      mapId: "dust2",
+      layerId: "main",
+      worldPosition: { x: -1248.585815, y: -246.164001, z: 191.263901 },
+      viewAngle: { pitch: -4.004517, yaw: 88.254547, roll: 0 },
+      coordinateSource: "world-conversion",
+    });
+    expect(answer.correctPoint.x).toBeCloseTo(0.2724196966, 9);
+    expect(answer.correctPoint.y).toBeCloseTo(0.7735182886, 9);
+    expect(answer.correctPoint.x).toBeLessThan(0.5);
+    expect(answer.correctPoint.y).toBeGreaterThan(0.5);
+    expect(answer.automaticPoint).toEqual(answer.correctPoint);
+  });
+
   it("selects a multi-level radar layer from world Z", () => {
     expect(resolveWorldCoordinateAnswer("nuke", "setpos_exact 0 0 -600").layerId).toBe("lower");
     expect(resolveWorldCoordinateAnswer("nuke", "setpos_exact 0 0 -400").layerId).toBe("upper");
