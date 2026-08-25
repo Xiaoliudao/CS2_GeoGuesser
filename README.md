@@ -10,8 +10,6 @@ CS2 Map Guesser 是一个双人实时 Counter-Strike 2 地图位置竞猜游戏�
 
 [CS2 Map Guesser – Guess Counter-Strike 2 Locations](https://cs2-map-guesser.457214526y.workers.dev/)
 
-Play online: [https://cs2-map-guesser.457214526y.workers.dev/](https://cs2-map-guesser.457214526y.workers.dev/)
-
 ## 游戏玩法
 
 1. 创建一个房间并把房间代码分享给另一位玩家。
