@@ -206,6 +206,12 @@ export function HomePage() {
     }
   };
 
+  const startSolo = () => {
+    if (!validateNickname()) return;
+    setError("");
+    navigate("/solo");
+  };
+
   const joinRoom = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -222,7 +228,7 @@ export function HomePage() {
       <div className="ambient ambient-two" aria-hidden="true" />
       <header className="home-hero" aria-labelledby="home-title">
         <div className="home-card">
-          <div className="eyebrow">REAL-TIME · TWO PLAYER</div>
+          <div className="eyebrow">SOLO · REAL-TIME MULTIPLAYER</div>
           <h1 id="home-title">
             CS2 MAP
             <span>GUESSER</span>
@@ -238,6 +244,13 @@ export function HomePage() {
             placeholder="Your callsign"
             autoComplete="nickname"
           />
+
+          <div className="home-mode-launch solo-mode-launch">
+            <div><span>SINGLE PLAYER</span><small>Start immediately. No room or opponent required.</small></div>
+            <button className="primary-button" type="button" onClick={startSolo} disabled={busy}>SINGLE PLAYER</button>
+          </div>
+
+          <div className="divider mode-divider"><span>MULTIPLAYER</span></div>
 
           <MatchSettingsPanel
             expanded={settingsExpanded}
@@ -274,10 +287,10 @@ export function HomePage() {
             disabled={busy}
             aria-disabled={busy || !settingsAreAvailable}
           >
-            {busy ? "CONNECTING…" : "CREATE ROOM"}
+            {busy ? "CONNECTING…" : "CREATE MULTIPLAYER ROOM"}
           </button>
 
-          <div className="divider"><span>OR JOIN A SQUAD</span></div>
+          <div className="divider"><span>OR JOIN A ROOM</span></div>
           <form onSubmit={joinRoom}>
             <label htmlFor="room-code">ROOM CODE</label>
             <input
@@ -307,8 +320,8 @@ export function HomePage() {
             time bonus, so confident answers matter.
           </p>
           <p>
-            Create a private room, share its five-character code, and compete through a set of live rounds.
-            Both players see the answer and round breakdown together before the next location begins.
+            Practice alone in Single Player, or create a private room and share its five-character code for a
+            synchronized two-player match. Every round reveals the answer and a detailed score breakdown.
           </p>
         </div>
 

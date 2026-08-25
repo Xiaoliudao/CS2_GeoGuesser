@@ -62,7 +62,7 @@ function roomCreateCalls(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 async function waitForAvailability() {
-  const createButton = screen.getByRole("button", { name: "CREATE ROOM" });
+  const createButton = screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" });
   await waitFor(() => expect(createButton.getAttribute("aria-disabled")).toBe("false"));
   return createButton;
 }
@@ -80,6 +80,17 @@ afterEach(() => {
 });
 
 describe("HomePage compact room creation", () => {
+  it("opens the separate solo route without creating a multiplayer room", async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch();
+    render(<HomePage />);
+
+    await user.click(screen.getByRole("button", { name: "SINGLE PLAYER" }));
+
+    expect(window.location.pathname).toBe("/solo");
+    expect(roomCreateCalls(fetchMock)).toHaveLength(0);
+  });
+
   it("creates with exact defaults without opening advanced settings", async () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
@@ -109,7 +120,7 @@ describe("HomePage compact room creation", () => {
     await user.clear(input);
     await user.type(input, "0");
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
-    await user.click(screen.getByRole("button", { name: "CREATE ROOM" }));
+    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
 
     await waitFor(() => expect(document.activeElement).toBe(input));
     expect((document.getElementById(MATCH_SETTINGS_DETAILS_ID) as HTMLDivElement).hidden).toBe(false);
@@ -127,7 +138,7 @@ describe("HomePage compact room creation", () => {
     await user.clear(input);
     await user.type(input, "9");
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
-    await user.click(screen.getByRole("button", { name: "CREATE ROOM" }));
+    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
 
     await waitFor(() => expect(document.activeElement).toBe(input));
     expect(roomCreateCalls(fetchMock)).toHaveLength(0);
@@ -142,7 +153,7 @@ describe("HomePage compact room creation", () => {
     await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
     await user.click(screen.getByRole("button", { name: "CLEAR" }));
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
-    await user.click(screen.getByRole("button", { name: "CREATE ROOM" }));
+    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
 
     const mapPool = document.getElementById(MATCH_SETTINGS_MAP_POOL_ID);
     await waitFor(() => expect(document.activeElement).toBe(mapPool));
@@ -153,7 +164,7 @@ describe("HomePage compact room creation", () => {
     const user = userEvent.setup();
     const fetchMock = installFetch({ availableQuestions: 4 });
     render(<HomePage />);
-    const createButton = screen.getByRole("button", { name: "CREATE ROOM" });
+    const createButton = screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" });
     await waitFor(() => expect(document.querySelector(".match-settings-note")?.textContent).toContain("ONLY 4 QUESTIONS ARE AVAILABLE"));
 
     await user.click(createButton);

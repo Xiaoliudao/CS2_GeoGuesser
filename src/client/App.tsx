@@ -7,6 +7,7 @@ const DevQuestionEditorPage = import.meta.env.DEV
   ? lazy(() => import("./pages/QuestionEditorPage").then((module) => ({ default: module.QuestionEditorPage })))
   : null;
 const AdminQuestionEditorPage = lazy(() => import("./pages/AdminQuestionEditorPage").then((module) => ({ default: module.AdminQuestionEditorPage })));
+const SoloPage = lazy(() => import("./pages/SoloPage").then((module) => ({ default: module.SoloPage })));
 
 function NotFoundPage() {
   return (
@@ -46,6 +47,9 @@ export function App() {
   }
   if (path === "/admin/question-editor" || path === "/admin/question-editor/") {
     return <Suspense fallback={null}><AdminQuestionEditorPage /></Suspense>;
+  }
+  if (path === "/solo" || path === "/solo/") {
+    return <Suspense fallback={null}><SoloPage /></Suspense>;
   }
   if (roomMatch) return <RoomPage roomCode={roomMatch[1].toUpperCase()} />;
   if (inviteMatch) return <InviteJoinPage roomCode={inviteMatch[1]} />;

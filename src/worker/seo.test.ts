@@ -37,6 +37,7 @@ describe("SEO documents", () => {
 
     expect(response.headers.get("content-type")).toBe("text/plain; charset=UTF-8");
     expect(body).toContain("Allow: /");
+    expect(body).toContain("Disallow: /solo");
     expect(body).toContain("Disallow: /room/");
     expect(body).toContain("Disallow: /join/");
     expect(body).toContain("Disallow: /dev/");
@@ -52,6 +53,7 @@ describe("SEO documents", () => {
     expect(body.match(/<url>/g)).toHaveLength(1);
     expect(body).toContain(`<loc>${SITE_CONFIG.origin}/</loc>`);
     expect(body).not.toContain("/room/");
+    expect(body).not.toContain("/solo");
     expect(body).not.toContain("/join/");
     expect(body).not.toContain("/dev/");
     expect(body).not.toContain("/api/");
@@ -61,6 +63,8 @@ describe("SEO documents", () => {
 describe("non-indexable routes", () => {
   it.each([
     "/room/ABCDE",
+    "/solo",
+    "/solo/",
     "/join/ABCDE",
     "/room/TEST",
     "/dev/question-editor",
@@ -71,6 +75,9 @@ describe("non-indexable routes", () => {
   });
 
   it("recognizes direct invite navigation as an SPA document without matching APIs", () => {
+    expect(isSpaDocumentPath("/solo", false)).toBe(true);
+    expect(isSpaDocumentPath("/solo/", false)).toBe(true);
+    expect(isSpaDocumentPath(`/api/solo/${"a".repeat(64)}`, false)).toBe(false);
     expect(isSpaDocumentPath("/join/87MDB", false)).toBe(true);
     expect(isSpaDocumentPath("/join/87mdb/", false)).toBe(true);
     expect(isSpaDocumentPath("/api/rooms/87MDB/preview", false)).toBe(false);
@@ -83,6 +90,8 @@ describe("non-indexable routes", () => {
       assets?: { run_worker_first?: string[] };
     };
     expect(config.assets?.run_worker_first).toContain("/join/*");
+    expect(config.assets?.run_worker_first).toContain("/solo");
+    expect(config.assets?.run_worker_first).toContain("/solo/*");
   });
 
   it("preserves the response while adding X-Robots-Tag", async () => {

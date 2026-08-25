@@ -17,6 +17,8 @@
 			"/api/*",
 			"/ws/*",
 			"/media/*",
+			"/solo",
+			"/solo/*",
 			"/room/*",
 			"/join/*",
 			"/dev/*",
@@ -48,6 +50,10 @@
 			{
 				"name": "GAME_ROOM",
 				"class_name": "GameRoom"
+			},
+			{
+				"name": "SOLO_SESSION",
+				"class_name": "SoloSession"
 			}
 		]
 	},
@@ -56,6 +62,12 @@
 			"tag": "v1",
 			"new_sqlite_classes": [
 				"GameRoom"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"SoloSession"
 			]
 		}
 	],

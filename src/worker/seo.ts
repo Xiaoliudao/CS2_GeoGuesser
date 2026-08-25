@@ -3,7 +3,8 @@ import { SITE_CONFIG } from "../shared/siteConfig";
 const NO_INDEX_VALUE = "noindex, nofollow";
 
 export function isNoIndexPath(pathname: string): boolean {
-  return pathname === "/room" || pathname.startsWith("/room/")
+  return pathname === "/solo" || pathname.startsWith("/solo/")
+    || pathname === "/room" || pathname.startsWith("/room/")
     || pathname === "/join" || pathname.startsWith("/join/")
     || pathname === "/dev" || pathname.startsWith("/dev/")
     || pathname === "/admin" || pathname.startsWith("/admin/")
@@ -11,7 +12,8 @@ export function isNoIndexPath(pathname: string): boolean {
 }
 
 export function isSpaDocumentPath(pathname: string, development: boolean): boolean {
-  return /^\/room\/[A-HJ-NP-Z2-9]{5}\/?$/i.test(pathname)
+  return /^\/solo\/?$/.test(pathname)
+    || /^\/room\/[A-HJ-NP-Z2-9]{5}\/?$/i.test(pathname)
     || /^\/join\/[^/]+\/?$/i.test(pathname)
     || /^\/admin\/question-editor\/?$/.test(pathname)
     || (development && /^\/dev\/question-editor\/?$/.test(pathname));
@@ -31,6 +33,7 @@ export function robotsResponse(): Response {
   const body = [
     "User-agent: *",
     "Allow: /",
+    "Disallow: /solo",
     "Disallow: /room/",
     "Disallow: /join/",
     "Disallow: /dev/",

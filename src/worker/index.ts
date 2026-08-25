@@ -1,5 +1,6 @@
 import { playerIdSchema, roomCodeSchema } from "../shared/schemas";
 import { getRadarLayer, MAP_IDS } from "../shared/maps";
+import { CreateSoloSessionRequestSchema, SoloSessionIdSchema } from "../shared/solo";
 import {
   CreateRoomRequestSchema,
   QuestionAvailabilityRequestSchema,
@@ -10,6 +11,7 @@ import {
 import { authenticateAdminRequest } from "./admin/accessAuth";
 import { handleAdminRequest } from "./admin/adminQuestions";
 import { GameRoom } from "./durableObjects/GameRoom";
+import { SoloSession, type SoloRpcResult } from "./durableObjects/SoloSession";
 import type { Env } from "./env";
 import { mediaResponse, questionMediaResponse, radarObjectKey } from "./media";
 import { QuestionRepository } from "./questions/QuestionRepository";
@@ -29,6 +31,66 @@ function roomStub(env: Env, roomCode: string, serverRegion: ServerRegion = "auto
   return serverRegion === "asia"
     ? env.GAME_ROOM.get(id, { locationHint: "apac" })
     : env.GAME_ROOM.get(id);
+}
+
+function soloStub(env: Env, sessionId: string): DurableObjectStub<SoloSession> | null {
+  const parsed = SoloSessionIdSchema.safeParse(sessionId);
+  if (!parsed.success) return null;
+  try {
+    return env.SOLO_SESSION.get(env.SOLO_SESSION.idFromString(parsed.data));
+  } catch {
+    return null;
+  }
+}
+
+const SOLO_RESPONSE_HEADERS = {
+  "cache-control": "no-store",
+  "x-content-type-options": "nosniff",
+};
+
+function soloRpcResponse(result: SoloRpcResult): Response {
+  if (result.ok) return Response.json(result.state, { status: result.status, headers: SOLO_RESPONSE_HEADERS });
+  return Response.json({
+    error: result.error,
+    ...(result.availableQuestions === undefined ? {} : { availableQuestions: result.availableQuestions }),
+    ...(result.requestedRounds === undefined ? {} : { requestedRounds: result.requestedRounds }),
+  }, { status: result.status, headers: SOLO_RESPONSE_HEADERS });
+}
+
+async function createSoloSession(request: Request, env: Env): Promise<Response> {
+  const body = await request.json().catch(() => null);
+  const parsed = CreateSoloSessionRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json({ error: "INVALID_SOLO_SETTINGS" }, { status: 400, headers: SOLO_RESPONSE_HEADERS });
+  }
+  const id = env.SOLO_SESSION.newUniqueId();
+  const result = await env.SOLO_SESSION.get(id).initialize({
+    sessionId: id.toString(),
+    nickname: parsed.data.nickname,
+    settings: parsed.data.settings,
+  });
+  return soloRpcResponse(result);
+}
+
+async function handleSoloSessionRequest(
+  request: Request,
+  env: Env,
+  sessionId: string,
+  action: string | undefined,
+): Promise<Response> {
+  const stub = soloStub(env, sessionId);
+  if (!stub) return Response.json({ error: "SOLO_SESSION_NOT_FOUND" }, { status: 404, headers: SOLO_RESPONSE_HEADERS });
+  if (!action && request.method === "GET") return soloRpcResponse(await stub.getState());
+  if (request.method !== "POST" || !action) {
+    return Response.json({ error: "INVALID_SOLO_STATE" }, { status: 405, headers: SOLO_RESPONSE_HEADERS });
+  }
+  const body = await request.json().catch(() => null);
+  if (action === "ready") return soloRpcResponse(await stub.assetReady(body));
+  if (action === "hint") return soloRpcResponse(await stub.hint(body));
+  if (action === "guess") return soloRpcResponse(await stub.guess(body));
+  if (action === "next") return soloRpcResponse(await stub.next(body));
+  if (action === "play-again") return soloRpcResponse(await stub.playAgain(body));
+  return Response.json({ error: "INVALID_SOLO_STATE" }, { status: 404, headers: SOLO_RESPONSE_HEADERS });
 }
 
 function questionDatabaseUnavailable(operation: string, error: unknown): Response {
@@ -137,6 +199,15 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
       return createRoom(request, env);
     }
 
+    if (url.pathname === "/api/solo" && request.method === "POST") {
+      return createSoloSession(request, env);
+    }
+
+    const soloSessionMatch = url.pathname.match(/^\/api\/solo\/([a-f0-9]{64})(?:\/(ready|hint|guess|next|play-again))?$/);
+    if (soloSessionMatch) {
+      return handleSoloSessionRequest(request, env, soloSessionMatch[1], soloSessionMatch[2]);
+    }
+
     if (url.pathname === "/api/questions/availability" && request.method === "POST") {
       return questionAvailability(request, env);
     }
@@ -242,4 +313,4 @@ export default {
   },
 };
 
-export { GameRoom };
+export { GameRoom, SoloSession };
