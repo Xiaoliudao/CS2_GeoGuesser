@@ -16,9 +16,13 @@ describe("round asset preparation", () => {
     currentQuestionId: "q-current",
   };
 
-  it("does not start until both players report the current asset ready", () => {
-    expect(allPlayersAssetReady(["a", "b"], { a: true, b: false })).toBe(false);
-    expect(allPlayersAssetReady(["a", "b"], { a: true, b: true })).toBe(true);
+  it("waits for every active participant across two-to-five player rooms", () => {
+    const readiness = { a: true, b: true, c: true, d: true, e: true, inactive: false };
+    expect(allPlayersAssetReady(["a", "b"], readiness)).toBe(true);
+    expect(allPlayersAssetReady(["a", "b", "c", "d", "e"], readiness)).toBe(true);
+    expect(allPlayersAssetReady(["a", "b", "inactive"], readiness)).toBe(false);
+    expect(allPlayersAssetReady(["a", "b"], { ...readiness, b: false })).toBe(false);
+    expect(allPlayersAssetReady([], readiness)).toBe(false);
   });
 
   it("rejects readiness for the wrong state, round, or question", () => {

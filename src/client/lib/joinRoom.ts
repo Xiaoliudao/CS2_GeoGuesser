@@ -17,7 +17,7 @@ const ERROR_MESSAGES: Record<JoinRoomErrorCode, string> = {
   invalid_nickname: "Nickname must be between 2 and 20 characters.",
   invalid_room_code: "Enter a valid 5-character room code.",
   not_found: "This room may have expired or the invite link is invalid.",
-  full: "This room already has two players.",
+  full: "This room is full.",
   in_progress: "This match has already started.",
   expired: "This room has finished and the invite has expired.",
   unavailable: "Could not reach the game server. Please try again.",

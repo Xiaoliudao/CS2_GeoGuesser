@@ -40,7 +40,7 @@ function installFetch({
     roomCode: "87MDB",
     reason: null,
     playerCount: 1,
-    maxPlayers: 2,
+    maxPlayers: 5,
     settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
   },
 }: FetchScenario = {}) {
@@ -77,7 +77,7 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/");
   localStorage.clear();
   localStorage.setItem("cs2-guesser-nickname", "Tester");
-  localStorage.setItem("cs2-guesser-player-id", "test-player");
+  localStorage.setItem("cs2-guesser-player-id", "11111111-1111-4111-8111-111111111111");
 });
 
 afterEach(() => {
@@ -127,6 +127,10 @@ describe("HomePage compact room creation", () => {
     const [, init] = roomCreateCalls(fetchMock)[0];
     expect(JSON.parse(String((init as RequestInit).body))).toEqual({
       settings: { ...DEFAULT_ROOM_SETTINGS, mapPool: [...MAP_IDS] },
+      creator: {
+        playerId: "11111111-1111-4111-8111-111111111111",
+        nickname: "Tester",
+      },
     });
     expect(details.hidden).toBe(true);
   });

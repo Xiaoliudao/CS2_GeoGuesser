@@ -1,4 +1,5 @@
-import { ROOM_INVITE_MAX_PLAYERS, type RoomInvitePreview } from "../../shared/roomInvite";
+import { MAX_MULTIPLAYER_PLAYERS } from "../../shared/multiplayer";
+import type { RoomInvitePreview } from "../../shared/roomInvite";
 import type { RoomSettings } from "../../shared/roomSettings";
 import type { RoomStatus } from "../../shared/types";
 
@@ -26,12 +27,12 @@ export function roomInvitePreview({
   viewerPlayerId: string | null;
 }): RoomInvitePreview {
   const reconnectable = viewerPlayerId !== null && playerIds.includes(viewerPlayerId);
-  const playerCount = Math.min(playerIds.length, ROOM_INVITE_MAX_PLAYERS);
+  const playerCount = Math.min(playerIds.length, MAX_MULTIPLAYER_PLAYERS);
   let joinable = false;
   let reason: "full" | "in_progress" | "expired" | null = null;
 
   if (status === "waiting") {
-    joinable = reconnectable || playerCount < ROOM_INVITE_MAX_PLAYERS;
+    joinable = reconnectable || playerCount < MAX_MULTIPLAYER_PLAYERS;
     reason = joinable ? null : "full";
   } else if (status === "finished") {
     reason = "expired";
@@ -47,7 +48,7 @@ export function roomInvitePreview({
     roomCode,
     reason,
     playerCount,
-    maxPlayers: ROOM_INVITE_MAX_PLAYERS,
+    maxPlayers: MAX_MULTIPLAYER_PLAYERS,
     settings: {
       totalRounds: settings.totalRounds,
       roundDurationSeconds: settings.roundDurationSeconds,

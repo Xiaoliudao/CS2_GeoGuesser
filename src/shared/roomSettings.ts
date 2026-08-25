@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAP_IDS, type MapId } from "./maps";
+import { MultiplayerCreatorSchema, type MultiplayerCreator } from "./multiplayer";
 
 export const MIN_ROUNDS = 1;
 export const MAX_ROUNDS = 50;
@@ -18,6 +19,7 @@ export interface RoomSettings {
 
 export interface CreateRoomRequest {
   settings: RoomSettings;
+  creator: MultiplayerCreator;
 }
 
 export interface QuestionAvailability {
@@ -65,7 +67,10 @@ export const RoomSettingsSchema = z.object({
   serverRegion: z.enum(SERVER_REGIONS),
 }).strict();
 
-export const CreateRoomRequestSchema = z.object({ settings: RoomSettingsSchema }).strict();
+export const CreateRoomRequestSchema = z.object({
+  settings: RoomSettingsSchema,
+  creator: MultiplayerCreatorSchema,
+}).strict();
 export const QuestionAvailabilityRequestSchema = z.object({ mapPool: MapPoolSchema }).strict();
 
 export function roomSettingsValidationErrorCode(error: z.ZodError): RoomSettingsValidationErrorCode {

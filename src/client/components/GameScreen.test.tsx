@@ -13,9 +13,11 @@ function playingRoom(roundEndsAt: number): GameRoomState {
     roomCode: "ABCDE",
     status: "playing",
     settings: { ...DEFAULT_ROOM_SETTINGS, mapPool: [...DEFAULT_ROOM_SETTINGS.mapPool] },
+    hostPlayerId: "player-a",
+    maxPlayers: 5,
     players: [
-      { id: "player-a", nickname: "Alpha", connected: true, ready: true, score: 0, submitted: false, assetReady: false },
-      { id: "player-b", nickname: "Bravo", connected: true, ready: true, score: 0, submitted: false, assetReady: false },
+      { id: "player-a", nickname: "Alpha", slotIndex: 0, active: true, connected: true, ready: true, score: 0, submitted: false, assetReady: false },
+      { id: "player-b", nickname: "Bravo", slotIndex: 1, active: true, connected: true, ready: true, score: 0, submitted: false, assetReady: false },
     ],
     round: 1,
     questionCount: 10,

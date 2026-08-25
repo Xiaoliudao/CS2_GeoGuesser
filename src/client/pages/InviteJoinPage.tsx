@@ -13,7 +13,7 @@ type PageState =
   | { status: "loaded"; preview: RoomInvitePreview };
 
 const BLOCKED_COPY: Record<RoomInviteUnavailableReason, { title: string; message: string }> = {
-  full: { title: "ROOM FULL", message: "This room already has two players." },
+  full: { title: "ROOM FULL", message: "This room has no open player slots." },
   in_progress: { title: "MATCH IN PROGRESS", message: "This match has already started." },
   expired: { title: "INVITE EXPIRED", message: "This match has finished and the room invite is no longer active." },
 };
@@ -97,7 +97,10 @@ export function InviteJoinPage({ roomCode: rawRoomCode }: { roomCode: string }) 
     const reason = blockedReason ?? (preview.exists && !preview.joinable ? preview.reason : null);
     if (reason) {
       const blocked = BLOCKED_COPY[reason];
-      content = <div className="invite-state"><div className="stage-kicker">INVITE UNAVAILABLE</div><h1>{blocked.title}</h1><p>{blocked.message}</p>{backButton}</div>;
+      const message = reason === "full" && preview.exists
+        ? `This room already has ${preview.maxPlayers} players.`
+        : blocked.message;
+      content = <div className="invite-state"><div className="stage-kicker">INVITE UNAVAILABLE</div><h1>{blocked.title}</h1><p>{message}</p>{backButton}</div>;
     } else if (preview.exists) {
       const settings = preview.settings;
       content = (
@@ -106,6 +109,7 @@ export function InviteJoinPage({ roomCode: rawRoomCode }: { roomCode: string }) 
           <h1>JOIN ROOM</h1>
           <div className="invite-room-code"><span>ROOM</span><strong>{preview.roomCode}</strong></div>
           <div className="invite-settings" aria-label="Room settings preview">
+            <span>{preview.playerCount} / {preview.maxPlayers} PLAYERS</span>
             <span>{settings.totalRounds} ROUNDS</span>
             <span>{settings.roundDurationSeconds} SEC</span>
             <span>{settings.mapCount === MAP_IDS.length ? "ALL MAPS" : `${settings.mapCount} MAPS`}</span>

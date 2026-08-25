@@ -9,6 +9,11 @@ import {
   roomSettingsFromStorage,
 } from "./roomSettings";
 
+const CREATOR = {
+  playerId: "11111111-1111-4111-8111-111111111111",
+  nickname: "Dr. INTEL",
+};
+
 describe("RoomSettings validation", () => {
   it("accepts defaults, custom values, a single map, and all maps", () => {
     expect(RoomSettingsSchema.parse(DEFAULT_ROOM_SETTINGS)).toEqual(DEFAULT_ROOM_SETTINGS);
@@ -54,11 +59,23 @@ describe("RoomSettings validation", () => {
   });
 
   it("requires the unified nested create-room protocol", () => {
-    expect(CreateRoomRequestSchema.safeParse({ settings: DEFAULT_ROOM_SETTINGS }).success).toBe(true);
+    expect(CreateRoomRequestSchema.safeParse({ settings: DEFAULT_ROOM_SETTINGS, creator: CREATOR }).success).toBe(true);
+    expect(CreateRoomRequestSchema.safeParse({ settings: DEFAULT_ROOM_SETTINGS }).success).toBe(false);
     expect(CreateRoomRequestSchema.safeParse({
       totalRounds: 5,
       roundDurationSeconds: 20,
       mapPool: ["mirage"],
+    }).success).toBe(false);
+  });
+
+  it("strictly validates creator identity without accepting a host flag", () => {
+    expect(CreateRoomRequestSchema.safeParse({
+      settings: DEFAULT_ROOM_SETTINGS,
+      creator: { ...CREATOR, playerId: "not-a-uuid" },
+    }).success).toBe(false);
+    expect(CreateRoomRequestSchema.safeParse({
+      settings: DEFAULT_ROOM_SETTINGS,
+      creator: { ...CREATOR, host: true },
     }).success).toBe(false);
   });
 

@@ -12,7 +12,7 @@ class TestClient {
     this.lastPong = null;
   }
 
-  async connect() {
+  async connect({ waitForJoin = true } = {}) {
     this.socket = new WebSocket(`${wsBaseUrl}/ws/${this.roomCode}`);
     this.socket.addEventListener("message", (message) => {
       const event = JSON.parse(String(message.data));
@@ -30,6 +30,7 @@ class TestClient {
       this.socket.addEventListener("error", () => reject(new Error(`${this.name} WebSocket failed`)), { once: true });
     });
     this.send({ type: "player:join", payload: { playerId: this.playerId, nickname: this.name } });
+    if (!waitForJoin) return;
     await this.waitFor((state) => state.players.some((player) => player.id === this.playerId));
     const clientSentAt = Date.now();
     this.send({ type: "ping", payload: { clientSentAt } });
@@ -63,6 +64,16 @@ class TestClient {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`${this.name} timed out waiting for ${code}`);
+  }
+
+  async waitForJoinOrError(timeoutMs = 8_000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (this.lastState?.players.some((player) => player.id === this.playerId)) return "joined";
+      if (this.lastError?.code) return this.lastError.code;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`${this.name} timed out waiting for a join outcome`);
   }
 
   send(event) {
@@ -114,10 +125,67 @@ const requestedSettings = {
 const firstLayerByMap = { nuke: "upper", train: "upper" };
 const guessMapId = requestedSettings.mapPool[0];
 const guessLayerId = firstLayerByMap[guessMapId] ?? "main";
+
+const capacityHostId = crypto.randomUUID();
+const capacityCreateResponse = await fetch(`${baseUrl}/api/rooms`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    settings: requestedSettings,
+    creator: { playerId: capacityHostId, nickname: "Capacity Host" },
+  }),
+});
+assert(capacityCreateResponse.status === 201, `Expected capacity room creation 201, got ${capacityCreateResponse.status}`);
+const { roomCode: capacityRoomCode } = await capacityCreateResponse.json();
+const capacityHost = new TestClient("Capacity Host", capacityHostId, capacityRoomCode);
+const capacityGuests = ["Guest 2", "Guest 3", "Guest 4"].map(
+  (name) => new TestClient(name, crypto.randomUUID(), capacityRoomCode),
+);
+const slotFiveContenders = ["Race A", "Race B"].map(
+  (name) => new TestClient(name, crypto.randomUUID(), capacityRoomCode),
+);
+try {
+  await capacityHost.connect();
+  assert(capacityHost.lastState.hostPlayerId === capacityHostId, "Room creator was not assigned as authoritative host");
+  assert(capacityHost.lastState.players.find((player) => player.id === capacityHostId)?.slotIndex === 0, "Room creator did not retain P1");
+  capacityHost.send({ type: "player:ready" });
+  await capacityHost.waitFor((state) => state.players.find((player) => player.id === capacityHostId)?.ready === true);
+  capacityHost.send({ type: "game:start" });
+  await capacityHost.waitForError("NOT_ENOUGH_PLAYERS");
+
+  await Promise.all(capacityGuests.map((client) => client.connect()));
+  await capacityHost.waitFor((state) => state.status === "waiting" && state.players.length === 4);
+  await Promise.all(slotFiveContenders.map((client) => client.connect({ waitForJoin: false })));
+  const raceOutcomes = await Promise.all(slotFiveContenders.map((client) => client.waitForJoinOrError()));
+  assert(raceOutcomes.filter((outcome) => outcome === "joined").length === 1, "Concurrent joins did not produce exactly one fifth player");
+  assert(raceOutcomes.filter((outcome) => outcome === "ROOM_FULL").length === 1, "Concurrent sixth player was not rejected with ROOM_FULL");
+  const winningContender = slotFiveContenders[raceOutcomes.indexOf("joined")];
+  const rejectedContender = slotFiveContenders[raceOutcomes.indexOf("ROOM_FULL")];
+  assert(rejectedContender.lastState === null, "Rejected anonymous socket received private room broadcasts");
+  const fullState = await capacityHost.waitFor((state) => state.players.length === 5);
+  assert(new Set(fullState.players.map((player) => player.slotIndex)).size === 5, "Five-player room assigned duplicate slots");
+  const previewResponse = await fetch(`${baseUrl}/api/rooms/${capacityRoomCode}/preview`);
+  const preview = await previewResponse.json();
+  assert(preview.playerCount === 5 && preview.maxPlayers === 5 && preview.joinable === false, "Full invite preview is inconsistent");
+
+  for (const client of [...capacityGuests, winningContender]) client.send({ type: "player:ready" });
+  await capacityHost.waitFor((state) => state.players.length === 5 && state.players.every((player) => player.ready));
+  capacityGuests[0].send({ type: "game:start" });
+  await capacityGuests[0].waitForError("NOT_HOST");
+  assert(capacityHost.lastState.status === "waiting", "Non-host unexpectedly started the match");
+} finally {
+  capacityHost.close();
+  for (const client of [...capacityGuests, ...slotFiveContenders]) client.close();
+}
+
+const alphaPlayerId = crypto.randomUUID();
 const createResponse = await fetch(`${baseUrl}/api/rooms`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ settings: requestedSettings }),
+  body: JSON.stringify({
+    settings: requestedSettings,
+    creator: { playerId: alphaPlayerId, nickname: "Alpha" },
+  }),
 });
 assert(createResponse.status === 201, `Expected room creation 201, got ${createResponse.status}`);
 const { roomCode, settings: createdSettings } = await createResponse.json();
@@ -127,7 +195,7 @@ assert(JSON.stringify(createdSettings) === JSON.stringify(requestedSettings), "C
 const existsResponse = await fetch(`${baseUrl}/api/rooms/${roomCode}`);
 assert(existsResponse.ok, "Created room was not discoverable");
 
-const alpha = new TestClient("Alpha", crypto.randomUUID(), roomCode);
+const alpha = new TestClient("Alpha", alphaPlayerId, roomCode);
 const bravo = new TestClient("Bravo", crypto.randomUUID(), roomCode);
 let activeAlpha = alpha;
 
@@ -142,12 +210,16 @@ try {
     assert(alpha.lastState.status === "waiting", "Empty content library did not stay in the lobby");
     alpha.send({ type: "player:ready" });
     bravo.send({ type: "player:ready" });
+    await alpha.waitFor((state) => state.status === "waiting" && state.players.every((player) => player.ready));
+    alpha.send({ type: "game:start" });
     await alpha.waitForError("NOT_ENOUGH_QUESTIONS");
     assert(alpha.lastState.status === "waiting", "Ready unexpectedly started a game with no real questions");
     console.log(JSON.stringify({ ok: true, mode: "content-changed-after-create", roomCode, readyBlocked: true }, null, 2));
   } else {
   alpha.send({ type: "player:ready" });
   bravo.send({ type: "player:ready" });
+  await alpha.waitFor((state) => state.status === "waiting" && state.players.every((player) => player.ready));
+  alpha.send({ type: "game:start" });
   let [alphaPreparing, bravoPreparing] = await Promise.all([
     alpha.waitFor((state) => state.status === "round_preparing" && state.round === 1),
     bravo.waitFor((state) => state.status === "round_preparing" && state.round === 1),
@@ -219,8 +291,8 @@ try {
   let currentBravoRound = bravoRound;
   assert(JSON.stringify(alphaRound.settings) === JSON.stringify(requestedSettings), "Playing state changed RoomSettings");
   assert(alphaRound.roundEndsAt - alphaRound.roundStartedAt === requestedSettings.roundDurationSeconds * 1_000, "Round deadline ignored RoomSettings");
-  assert(alphaRoundStart.roundStartedAt === bravoRoundStart.roundStartedAt, "round:start sent different start times to the two players");
-  assert(alphaRoundStart.roundEndsAt === bravoRoundStart.roundEndsAt, "round:start sent different deadlines to the two players");
+  assert(alphaRoundStart.roundStartedAt === bravoRoundStart.roundStartedAt, "round:start sent different start times to connected players");
+  assert(alphaRoundStart.roundEndsAt === bravoRoundStart.roundEndsAt, "round:start sent different deadlines to connected players");
   assert(alphaRoundStart.roundEndsAt - alphaRoundStart.roundStartedAt === requestedSettings.roundDurationSeconds * 1_000, "round:start duration included prepare time");
   assert(alphaRoundStart.roundDurationSeconds === requestedSettings.roundDurationSeconds, "round:start duration disagrees with RoomSettings");
   assert(Number.isFinite(alphaRoundStart.serverNow), "round:start did not include serverNow");
@@ -320,11 +392,11 @@ try {
     roundsCompleted: roundsToPlay,
     answersHiddenDuringRound: true,
     deadlineSynchronized: true,
-    opponentScoreHiddenUntilResult: true,
+    otherPlayerScoreHiddenUntilResult: true,
     ownScoreUpdatedImmediately: true,
     reconnectRestored: true,
     prepareReconnectRestored: true,
-    timerWaitedForBothAssets: true,
+    timerWaitedForAllAssets: true,
     duplicateAssetReadyIgnored: true,
     authoritativeRoundStartVerified: true,
     assetReplacementVerified: availability.availableQuestions > requestedSettings.totalRounds,
@@ -333,6 +405,10 @@ try {
     playAgainReset: true,
     roomSettingsPreserved: true,
     integerScoresOnly: true,
+    fivePlayerCapacityVerified: true,
+    concurrentSixthPlayerRejected: true,
+    creatorHostAndStableSlotsVerified: true,
+    anonymousSocketBroadcastIsolationVerified: true,
   }, null, 2));
   }
 } finally {

@@ -19,32 +19,45 @@ export function RoundPreparation({
   onRetry: () => void;
 }) {
   const me = room.players.find((player) => player.id === playerId);
-  const opponent = room.players.find((player) => player.id !== playerId);
   const ownReady = Boolean(me?.assetReady) || loadState === "ready";
-  const bothReady = room.players.length === 2 && room.players.every((player) => player.assetReady);
+  const activePlayers = room.players
+    .filter((player) => player.active)
+    .sort((left, right) => left.slotIndex - right.slotIndex);
+  const playerIsReady = (candidateId: string, assetReady: boolean) => candidateId === playerId
+    ? ownReady
+    : assetReady;
+  const readyCount = activePlayers.filter((player) => playerIsReady(player.id, player.assetReady)).length;
+  const allReady = activePlayers.length > 0 && readyCount === activePlayers.length;
 
   return (
     <section className="stage-card round-preparation" aria-live="polite">
       <div className="stage-kicker">ROUND {room.round} · PREPARING</div>
-      <h2>{bothReady ? "ROUND STARTING…" : "LOADING ROUND"}</h2>
-      <p>The guessing timer will start only after both players have loaded the required assets.</p>
-      <div className="prepare-status-list">
-        <div>
-          <span>QUESTION IMAGE</span>
-          <strong className={ownReady ? "is-ready" : loadState === "error" ? "is-error" : ""}>
-            {loadState === "error" ? "IMAGE LOAD FAILED" : readinessLabel(ownReady)}
-          </strong>
-        </div>
-        <div>
-          <span>YOU</span>
-          <strong className={ownReady ? "is-ready" : ""}>{readinessLabel(ownReady)}</strong>
-        </div>
-        <div>
-          <span>OPPONENT</span>
-          <strong className={opponent?.assetReady ? "is-ready" : ""}>
-            {readinessLabel(Boolean(opponent?.assetReady), opponent?.connected === false ? "RECONNECTING" : "LOADING")}
-          </strong>
-        </div>
+      <h2>{allReady ? "ROUND STARTING…" : "LOADING ROUND"}</h2>
+      <p>The guessing timer starts only after every active player has loaded the round image.</p>
+      <div className="prepare-readiness-summary">
+        <span>PLAYER ASSETS</span>
+        <strong>{readyCount} / {activePlayers.length} READY</strong>
+      </div>
+      <div className="prepare-status-list" aria-label="Player asset readiness">
+        {activePlayers.map((player) => {
+          const isMe = player.id === playerId;
+          const ready = playerIsReady(player.id, player.assetReady);
+          const localError = isMe && loadState === "error";
+          const label = localError
+            ? "IMAGE LOAD FAILED"
+            : readinessLabel(ready, player.connected ? "LOADING" : "RECONNECTING");
+          return (
+            <div className={`player-slot-${player.slotIndex + 1}`} key={player.id}>
+              <span>
+                <i>P{player.slotIndex + 1}</i>
+                {player.nickname}
+                {isMe && <small>YOU</small>}
+                {player.id === room.hostPlayerId && <small>HOST</small>}
+              </span>
+              <strong className={ready ? "is-ready" : localError ? "is-error" : ""}>{label}</strong>
+            </div>
+          );
+        })}
       </div>
       {loadState === "error" && (
         <div className="prepare-error">

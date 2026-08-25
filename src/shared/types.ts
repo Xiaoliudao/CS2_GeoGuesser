@@ -1,4 +1,5 @@
 import type { MapId, RadarLayerId } from "./maps";
+import { MAX_MULTIPLAYER_PLAYERS } from "./multiplayer";
 import type { RoomSettings } from "./roomSettings";
 
 export type RoomStatus = "waiting" | "round_preparing" | "playing" | "round_result" | "finished";
@@ -11,6 +12,8 @@ export interface MapPoint {
 export interface Player {
   id: string;
   nickname: string;
+  slotIndex: number;
+  active: boolean;
   connected: boolean;
   ready: boolean;
   score: number;
@@ -62,6 +65,8 @@ export interface GameRoomState extends RoundTiming {
   roomCode: string;
   status: RoomStatus;
   settings: RoomSettings;
+  hostPlayerId: string | null;
+  maxPlayers: typeof MAX_MULTIPLAYER_PLAYERS;
   players: PublicPlayer[];
   round: number;
   questionCount: number;
@@ -79,6 +84,9 @@ export type GameErrorCode =
   | "ROOM_NOT_FOUND"
   | "ROOM_FULL"
   | "INVALID_PLAYER"
+  | "NOT_HOST"
+  | "NOT_ENOUGH_PLAYERS"
+  | "PLAYERS_NOT_READY"
   | "GAME_ALREADY_STARTED"
   | "ALREADY_SUBMITTED"
   | "ROUND_EXPIRED"

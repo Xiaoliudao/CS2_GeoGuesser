@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import type { ClientEvent } from "../../shared/protocol";
+import { CLIENT_EVENTS, type ClientEvent } from "../../shared/protocol";
 import { navigate } from "../App";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { CopyRoomCodeButton } from "../components/CopyRoomCodeButton";
@@ -27,6 +27,10 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
     send,
   } = useGameSocket(roomCode, playerId, nickname);
   const preparation = useRoundPreparation(room, playerId, send);
+  const activePlayerCount = room?.players.filter((player) => player.active).length ?? 0;
+  const canInvite = room?.status === "waiting" && activePlayerCount < room.maxPlayers;
+  const viewer = room?.players.find((player) => player.id === playerId);
+  const viewerIsDnf = Boolean(room && room.status !== "waiting" && viewer?.active === false);
 
   useEffect(() => {
     if (!nickname) navigate("/");
@@ -44,7 +48,7 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           <span>ROOM</span>
           <strong>{roomCode}</strong>
           <CopyRoomCodeButton roomCode={roomCode} />
-          <InviteRoomButton roomCode={roomCode} />
+          {canInvite && <InviteRoomButton roomCode={roomCode} />}
         </div>
         <ConnectionStatus status={connection} rttMs={rttMs} />
       </header>
@@ -64,10 +68,25 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
         </section>
       )}
 
-      {room?.status === "waiting" && (
-        <Lobby room={room} playerId={playerId} onReady={() => sendEvent({ type: "player:ready" })} />
+      {viewerIsDnf && (room?.status === "round_preparing" || room?.status === "playing") && (
+        <section className="stage-card dnf-match-panel" aria-live="polite">
+          <div className="stage-kicker">ROUND {room.round} · MATCH IN PROGRESS</div>
+          <h2>YOU ARE MARKED DNF</h2>
+          <p>Your player slot is no longer active. You can view revealed results and the final standings, but you cannot load round assets or submit another guess.</p>
+          <div><span>CURRENT SCORE</span><strong>{viewer?.score ?? 0}</strong></div>
+          <button className="secondary-button" type="button" onClick={() => navigate("/")}>LEAVE ROOM</button>
+        </section>
       )}
-      {room?.status === "round_preparing" && (
+
+      {room?.status === "waiting" && (
+        <Lobby
+          room={room}
+          playerId={playerId}
+          onReady={() => sendEvent({ type: CLIENT_EVENTS.READY })}
+          onStart={() => sendEvent({ type: CLIENT_EVENTS.START_MATCH })}
+        />
+      )}
+      {room?.status === "round_preparing" && !viewerIsDnf && (
         <RoundPreparation
           room={room}
           playerId={playerId}
@@ -76,7 +95,7 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           onRetry={preparation.retry}
         />
       )}
-      {room?.status === "playing" && (
+      {room?.status === "playing" && !viewerIsDnf && (
         <GameScreen
           room={room}
           playerId={playerId}
@@ -90,7 +109,7 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
         <GameResult
           room={room}
           playerId={playerId}
-          onPlayAgain={() => sendEvent({ type: "game:play-again" })}
+          onPlayAgain={() => sendEvent({ type: CLIENT_EVENTS.PLAY_AGAIN })}
           onLeave={() => navigate("/")}
         />
       )}

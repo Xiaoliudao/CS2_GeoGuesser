@@ -1,7 +1,6 @@
 import { z } from "zod";
+import { MAX_MULTIPLAYER_PLAYERS } from "./multiplayer";
 import { roomCodeSchema } from "./schemas";
-
-export const ROOM_INVITE_MAX_PLAYERS = 2;
 
 export const RoomInviteUnavailableReasonSchema = z.enum([
   "full",
@@ -30,8 +29,8 @@ export const RoomInvitePreviewSchema = z.discriminatedUnion("exists", [
     reconnectable: z.boolean(),
     roomCode: roomCodeSchema,
     reason: RoomInviteUnavailableReasonSchema.nullable(),
-    playerCount: z.number().int().min(0).max(ROOM_INVITE_MAX_PLAYERS),
-    maxPlayers: z.literal(ROOM_INVITE_MAX_PLAYERS),
+    playerCount: z.number().int().min(0).max(MAX_MULTIPLAYER_PLAYERS),
+    maxPlayers: z.literal(MAX_MULTIPLAYER_PLAYERS),
     settings: RoomInviteSettingsSchema,
   }).strict(),
 ]);

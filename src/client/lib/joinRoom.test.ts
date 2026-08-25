@@ -10,7 +10,7 @@ const validPreview = {
   roomCode: "87MDB",
   reason: null,
   playerCount: 1,
-  maxPlayers: 2,
+  maxPlayers: 5,
   settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
 };
 
@@ -50,7 +50,7 @@ describe("shared room join action", () => {
   });
 
   it("surfaces authoritative full and started states", async () => {
-    const full = { ...validPreview, joinable: false, reason: "full", playerCount: 2 };
+    const full = { ...validPreview, joinable: false, reason: "full", playerCount: 5 };
     vi.stubGlobal("fetch", vi.fn(async () => response(200, full)));
     expect(await joinRoom({ roomCode: "87MDB", nickname: "Fred" })).toMatchObject({ ok: false, code: "full" });
 

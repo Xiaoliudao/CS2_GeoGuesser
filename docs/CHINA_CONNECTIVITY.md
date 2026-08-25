@@ -2,11 +2,11 @@
 
 CS2 Map Guesser runs on Cloudflare's global infrastructure. Cross-border routes from Mainland China can still have substantial latency, packet loss, or intermittent reachability. In particular, these application changes do **not** guarantee that a `*.workers.dev` hostname is directly reachable from Mainland China.
 
-The multiplayer flow is designed to remain fair when both players can connect through a high-latency route:
+The multiplayer flow is designed to remain fair when players connect through high-latency routes:
 
 - A round enters `round_preparing` before the authoritative countdown exists.
 - Each browser downloads and decodes the question screenshot and critical radar assets, then reports readiness.
-- The Durable Object creates one shared `roundEndsAt` only after both players are ready.
+- The room creates one shared `roundEndsAt` only after every active player has loaded the round assets.
 - RTT is diagnostic only. It never changes scores or gives players different deadlines.
 - A failed or stalled asset is replaced at most twice. Repeated failure ends the match with `NETWORK_ASSET_FAILURE` and awards no free points.
 - WebSocket reconnect uses bounded exponential backoff with jitter, while the existing disconnect grace period remains authoritative.

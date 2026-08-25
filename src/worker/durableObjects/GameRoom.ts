@@ -5,6 +5,10 @@ import type { AssetLoadErrorReason, ServerEvent } from "../../shared/protocol";
 import type { MapId, RadarLayerId } from "../../shared/maps";
 import { normalizePublicOrigin } from "../../shared/mediaUrls";
 import {
+  MAX_MULTIPLAYER_PLAYERS,
+  MultiplayerCreatorSchema,
+} from "../../shared/multiplayer";
+import {
   RoomSettingsSchema,
   roomSettingsFromStorage,
   roundDurationMs,
@@ -31,10 +35,18 @@ import {
   isValidAssetReport,
 } from "../game/assetPreparation";
 import {
-  allLobbyPlayersReady,
+  activeStateAfterReconnect,
+  activeMatchPlayerIds,
+  allActivePlayersSubmitted,
+  canReceiveRoomBroadcast,
+  expiredPlayerDisposition,
+  lowestAvailableSlotIndex,
   scoreVisibleToViewer,
+  selectHostPlayerId,
+  shouldRetainForRematch,
   toggledReadyState,
   validateGuess,
+  validateMatchStart,
 } from "../game/roomState";
 import { normalizeScore, scoreGuess } from "../game/scoring";
 import { createPlayingRoundTiming, createPreparingRoundTiming } from "../game/roundTiming";
@@ -48,6 +60,9 @@ const DISCONNECT_GRACE_MS = 30_000;
 interface InternalPlayer {
   id: string;
   nickname: string;
+  slotIndex: number;
+  joinedAt: number;
+  active: boolean;
   connected: boolean;
   ready: boolean;
   score: number;
@@ -72,11 +87,15 @@ interface StoredGuess {
 }
 
 interface InternalRoomState extends RoundTiming {
-  schemaVersion: 7;
+  schemaVersion: 8;
   roomCode: string;
   status: RoomStatus;
   settings: RoomSettings;
   players: InternalPlayer[];
+  hostPlayerId: string | null;
+  maxPlayers: typeof MAX_MULTIPLAYER_PLAYERS;
+  matchPlayerIds: string[];
+  inactivePlayerIds: string[];
   round: number;
   questionCount: number;
   questionSnapshot: ServerQuestion[];
@@ -127,12 +146,53 @@ function normalizeRoundResult(result: RoundResultState | null | undefined): Roun
 function migrateStoredState(stored: StoredRoomState): InternalRoomState {
   const questionSnapshot = stored.questionSnapshot ?? [];
   const currentQuestionId = stored.currentQuestionId ?? null;
+  const status = stored.status ?? "waiting";
+  const usedSlots = new Set<number>();
+  const players = (stored.players ?? []).slice(0, MAX_MULTIPLAYER_PLAYERS).map((storedPlayer, index) => {
+    let slotIndex = Number.isInteger(storedPlayer.slotIndex)
+      && storedPlayer.slotIndex >= 0
+      && storedPlayer.slotIndex < MAX_MULTIPLAYER_PLAYERS
+      && !usedSlots.has(storedPlayer.slotIndex)
+      ? storedPlayer.slotIndex
+      : lowestAvailableSlotIndex(Array.from(usedSlots, (occupiedSlot) => ({ slotIndex: occupiedSlot }))) ?? index;
+    if (slotIndex >= MAX_MULTIPLAYER_PLAYERS) slotIndex = index;
+    usedSlots.add(slotIndex);
+    return {
+      ...storedPlayer,
+      slotIndex,
+      joinedAt: Number.isFinite(storedPlayer.joinedAt) ? storedPlayer.joinedAt : index,
+      active: storedPlayer.active !== false,
+      connected: storedPlayer.connected === true,
+      ready: storedPlayer.ready === true,
+      score: normalizeScore(storedPlayer.score),
+      disconnectExpiresAt: Number.isFinite(storedPlayer.disconnectExpiresAt)
+        ? storedPlayer.disconnectExpiresAt
+        : null,
+    };
+  });
+  const playerIds = new Set(players.map((player) => player.id));
+  const migratedInactivePlayerIds = Array.from(new Set(stored.inactivePlayerIds ?? []))
+    .filter((playerId) => playerIds.has(playerId));
+  for (const player of players) {
+    if (!player.active && !migratedInactivePlayerIds.includes(player.id)) migratedInactivePlayerIds.push(player.id);
+    player.active = !migratedInactivePlayerIds.includes(player.id);
+  }
+  const matchPlayerIds = (stored.matchPlayerIds ?? (status === "waiting" ? [] : players.map((player) => player.id)))
+    .filter((playerId, index, values) => playerIds.has(playerId) && values.indexOf(playerId) === index);
+  const storedHostPlayerId = typeof stored.hostPlayerId === "string"
+    && players.some((player) => player.id === stored.hostPlayerId && player.active)
+    ? stored.hostPlayerId
+    : null;
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     roomCode: stored.roomCode ?? "UNKNOWN",
-    status: stored.status ?? "waiting",
+    status,
     settings: roomSettingsFromStorage(stored.settings, stored.totalRounds),
-    players: (stored.players ?? []).map((player) => ({ ...player, score: normalizeScore(player.score) })),
+    players,
+    hostPlayerId: storedHostPlayerId ?? selectHostPlayerId(players),
+    maxPlayers: MAX_MULTIPLAYER_PLAYERS,
+    matchPlayerIds,
+    inactivePlayerIds: migratedInactivePlayerIds,
     round: stored.round ?? 0,
     questionCount: stored.questionCount ?? 0,
     questionSnapshot,
@@ -170,9 +230,17 @@ export class GameRoom extends DurableObject<Env> {
       const stored = await ctx.storage.get<StoredRoomState>(STATE_KEY);
       if (stored) {
         this.state = migrateStoredState(stored);
-        if (stored.schemaVersion !== 7 || stored.totalRounds !== undefined || !RoomSettingsSchema.safeParse(stored.settings).success) {
+        if (
+          stored.schemaVersion !== 8
+          || stored.totalRounds !== undefined
+          || stored.maxPlayers !== MAX_MULTIPLAYER_PLAYERS
+          || !Array.isArray(stored.matchPlayerIds)
+          || !Array.isArray(stored.inactivePlayerIds)
+          || !RoomSettingsSchema.safeParse(stored.settings).success
+        ) {
           this.state.stateVersion += 1;
           await ctx.storage.put(STATE_KEY, this.state);
+          await this.scheduleAlarm();
         }
       }
     });
@@ -283,9 +351,15 @@ export class GameRoom extends DurableObject<Env> {
     const result = roomCodeSchema.safeParse(rawRoomCode);
     if (!result.success) return new Response("Invalid room code", { status: 400 });
     if (this.state) return new Response("Room already exists", { status: 409 });
-    const body = await request.json().catch(() => null) as { settings?: unknown; questionCount?: unknown } | null;
+    const body = await request.json().catch(() => null) as {
+      settings?: unknown;
+      questionCount?: unknown;
+      creator?: unknown;
+    } | null;
     const settings = RoomSettingsSchema.safeParse(body?.settings);
+    const creator = MultiplayerCreatorSchema.safeParse(body?.creator);
     if (!settings.success) return Response.json({ error: "INVALID_ROOM_SETTINGS" }, { status: 400 });
+    if (!creator.success) return Response.json({ error: "INVALID_PLAYER" }, { status: 400 });
     if (typeof body?.questionCount !== "number" || !Number.isInteger(body.questionCount) || body.questionCount < 0) {
       return Response.json({ error: "INVALID_ROOM_SETTINGS" }, { status: 400 });
     }
@@ -293,12 +367,27 @@ export class GameRoom extends DurableObject<Env> {
       return Response.json({ error: "NOT_ENOUGH_QUESTIONS" }, { status: 409 });
     }
 
+    const now = Date.now();
     this.state = {
-      schemaVersion: 7,
+      schemaVersion: 8,
       roomCode: result.data,
       status: "waiting",
       settings: settings.data,
-      players: [],
+      players: [{
+        id: creator.data.playerId,
+        nickname: creator.data.nickname,
+        slotIndex: 0,
+        joinedAt: now,
+        active: true,
+        connected: false,
+        ready: false,
+        score: 0,
+        disconnectExpiresAt: now + DISCONNECT_GRACE_MS,
+      }],
+      hostPlayerId: creator.data.playerId,
+      maxPlayers: MAX_MULTIPLAYER_PLAYERS,
+      matchPlayerIds: [],
+      inactivePlayerIds: [],
       round: 0,
       questionCount: body.questionCount,
       questionSnapshot: [],
@@ -317,6 +406,7 @@ export class GameRoom extends DurableObject<Env> {
       stateVersion: 1,
     };
     await this.ctx.storage.put(STATE_KEY, this.state);
+    await this.scheduleAlarm();
     return Response.json({ roomCode: result.data }, { status: 201 });
   }
 
@@ -359,6 +449,9 @@ export class GameRoom extends DurableObject<Env> {
       case "player:ready":
         await this.togglePlayerReady(player);
         break;
+      case "game:start":
+        await this.startMatch(socket, player);
+        break;
       case "guess:submit":
         await this.submitGuess(socket, player, event.payload);
         break;
@@ -366,7 +459,7 @@ export class GameRoom extends DurableObject<Env> {
         await this.reportAssetReady(socket, player, event.payload);
         break;
       case "round:asset-error":
-        await this.reportAssetError(socket, event.payload);
+        await this.reportAssetError(socket, player, event.payload);
         break;
       case "game:play-again":
         await this.playAgain(socket);
@@ -383,14 +476,19 @@ export class GameRoom extends DurableObject<Env> {
         socket.close(4003, "Game already started");
         return;
       }
-      if (this.state.players.length >= 2) {
-        this.sendError(socket, "ROOM_FULL", "This room already has two players.");
+      const slotIndex = lowestAvailableSlotIndex(this.state.players, this.state.maxPlayers);
+      if (this.state.players.length >= this.state.maxPlayers || slotIndex === null) {
+        this.sendError(socket, "ROOM_FULL", `This room already has ${this.state.maxPlayers} players.`);
         socket.close(4002, "Room full");
         return;
       }
+      const now = Date.now();
       player = {
         id: playerId,
         nickname,
+        slotIndex,
+        joinedAt: now,
+        active: true,
         connected: true,
         ready: false,
         score: 0,
@@ -401,8 +499,11 @@ export class GameRoom extends DurableObject<Env> {
       player.nickname = nickname;
       player.connected = true;
       player.disconnectExpiresAt = null;
-      if (this.state.status === "round_preparing") this.state.assetReady[player.id] = false;
+      player.active = activeStateAfterReconnect(this.state.status, player.active);
+      if (this.state.status === "round_preparing" && player.active) this.state.assetReady[player.id] = false;
     }
+
+    if (!this.state.hostPlayerId) this.state.hostPlayerId = selectHostPlayerId(this.state.players);
 
     socket.serializeAttachment({ playerId, nickname } satisfies SocketAttachment);
     for (const candidate of this.ctx.getWebSockets()) {
@@ -418,37 +519,80 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private async togglePlayerReady(player: InternalPlayer): Promise<void> {
-    if (!this.state || this.state.status !== "waiting") return;
-    let preparedRound = false;
+    if (!this.state || this.state.status !== "waiting" || !player.active) return;
     player.ready = toggledReadyState(player.ready);
     this.logGameEvent("PLAYER_READY_CHANGED", { playerId: player.id, ready: player.ready });
-    if (allLobbyPlayersReady(this.state.players)) {
-      try {
-        const requiredQuestions = this.state.settings.totalRounds;
-        const mapPool = this.state.settings.mapPool;
-        const questionCount = await this.questions().countEnabledForMaps(mapPool);
-        const snapshotLimit = Math.min(questionCount, requiredQuestions * (MAX_ASSET_PREPARE_RETRIES + 1));
-        const questions = await this.questions().getRandomEnabledForMaps(mapPool, snapshotLimit);
-        if (!this.state || this.state.status !== "waiting" || !allLobbyPlayersReady(this.state.players)) return;
-        this.state.questionCount = questionCount;
-        if (questionCount < requiredQuestions || questions.length < requiredQuestions) {
-          for (const candidate of this.state.players) candidate.ready = false;
-          this.broadcast({
-            type: "error",
-            payload: {
-              code: "NOT_ENOUGH_QUESTIONS",
-              message: `Only ${Math.min(questionCount, questions.length)} questions are currently available for this map pool.`,
-            },
-          });
-          await this.commit();
-          return;
-        }
-        this.state.questionSnapshot = questions;
-        this.state.questionCursor = -1;
-        this.beginRoundPreparation(Date.now(), false);
-        preparedRound = true;
-      } catch (error) {
-        this.logQuestionDatabaseError("start-match", error);
+    await this.commit();
+  }
+
+  private async startMatch(socket: WebSocket, player: InternalPlayer): Promise<void> {
+    if (!this.state) return;
+    const validationError = validateMatchStart({
+      status: this.state.status,
+      requestingPlayerId: player.id,
+      hostPlayerId: this.state.hostPlayerId,
+      players: this.state.players,
+    });
+    if (validationError) {
+      this.sendError(socket, validationError, this.errorMessage(validationError));
+      return;
+    }
+
+    const expectedStateVersion = this.state.stateVersion;
+    const participantIds = this.state.players
+      .filter((candidate) => candidate.active)
+      .slice()
+      .sort((left, right) => left.slotIndex - right.slotIndex)
+      .map((candidate) => candidate.id);
+    try {
+      const requiredQuestions = this.state.settings.totalRounds;
+      const mapPool = this.state.settings.mapPool;
+      const questionCount = await this.questions().countEnabledForMaps(mapPool);
+      const snapshotLimit = Math.min(questionCount, requiredQuestions * (MAX_ASSET_PREPARE_RETRIES + 1));
+      const questions = await this.questions().getRandomEnabledForMaps(mapPool, snapshotLimit);
+      if (!this.state || this.state.stateVersion !== expectedStateVersion) {
+        this.sendError(socket, "PLAYERS_NOT_READY", "The lobby changed while the match was starting. Please try again.");
+        return;
+      }
+      const revalidationError = validateMatchStart({
+        status: this.state.status,
+        requestingPlayerId: player.id,
+        hostPlayerId: this.state.hostPlayerId,
+        players: this.state.players,
+      });
+      const currentParticipantIds = this.state.players
+        .filter((candidate) => candidate.active)
+        .slice()
+        .sort((left, right) => left.slotIndex - right.slotIndex)
+        .map((candidate) => candidate.id);
+      if (revalidationError || currentParticipantIds.join("\u0000") !== participantIds.join("\u0000")) {
+        const code = revalidationError ?? "PLAYERS_NOT_READY";
+        this.sendError(socket, code, this.errorMessage(code));
+        return;
+      }
+      this.state.questionCount = questionCount;
+      if (questionCount < requiredQuestions || questions.length < requiredQuestions) {
+        for (const candidate of this.state.players) candidate.ready = false;
+        this.broadcast({
+          type: "error",
+          payload: {
+            code: "NOT_ENOUGH_QUESTIONS",
+            message: `Only ${Math.min(questionCount, questions.length)} questions are currently available for this map pool.`,
+          },
+        });
+        await this.commit();
+        return;
+      }
+      this.state.matchPlayerIds = participantIds;
+      this.state.inactivePlayerIds = [];
+      this.state.questionSnapshot = questions;
+      this.state.questionCursor = -1;
+      this.beginRoundPreparation(Date.now(), false);
+      await this.commit();
+      this.broadcastRoundPrepare();
+    } catch (error) {
+      this.logQuestionDatabaseError("start-match", error);
+      if (this.state?.status === "waiting") {
         for (const candidate of this.state.players) candidate.ready = false;
         this.broadcast({
           type: "error",
@@ -457,10 +601,9 @@ export class GameRoom extends DurableObject<Env> {
             message: "Question database is temporarily unavailable. Please retry.",
           },
         });
+        await this.commit();
       }
     }
-    await this.commit();
-    if (preparedRound) this.broadcastRoundPrepare();
   }
 
   private async submitGuess(
@@ -475,7 +618,7 @@ export class GameRoom extends DurableObject<Env> {
       return;
     }
     const validationError = validateGuess({
-      playerExists: true,
+      playerExists: player.active && this.activeMatchPlayerIds().includes(player.id),
       status: this.state.status,
       submittedRound: payload.round,
       currentRound: this.state.round,
@@ -519,7 +662,8 @@ export class GameRoom extends DurableObject<Env> {
     };
     player.score = normalizeScore(player.score + score.points);
 
-    if (this.state.players.length > 0 && this.state.players.every((candidate) => this.state?.guesses[candidate.id])) {
+    const activePlayerIds = this.activeMatchPlayerIds();
+    if (activePlayerIds.length > 0 && allActivePlayersSubmitted(activePlayerIds, this.state.guesses)) {
       this.finishRound(now);
     }
     await this.commit();
@@ -530,6 +674,10 @@ export class GameRoom extends DurableObject<Env> {
     player: InternalPlayer,
     payload: { round: number; questionId: string; loadMs?: number },
   ): Promise<void> {
+    if (!player.active || !this.activeMatchPlayerIds().includes(player.id)) {
+      this.sendError(socket, "INVALID_PLAYER", "This player is no longer active in the match.");
+      return;
+    }
     if (!this.state || !isValidAssetReport({
       status: this.state.status,
       reportedRound: payload.round,
@@ -547,7 +695,7 @@ export class GameRoom extends DurableObject<Env> {
       attempt: this.state.assetPrepareAttempt,
       loadMs: payload.loadMs ?? null,
     });
-    if (allPlayersAssetReady(this.state.players.map((candidate) => candidate.id), this.state.assetReady)) {
+    if (allPlayersAssetReady(this.activeMatchPlayerIds(), this.state.assetReady)) {
       const now = Date.now();
       if (!this.startPreparedRound(now)) return;
       await this.commit();
@@ -559,8 +707,13 @@ export class GameRoom extends DurableObject<Env> {
 
   private async reportAssetError(
     socket: WebSocket,
+    player: InternalPlayer,
     payload: { round: number; questionId: string; reason: AssetLoadErrorReason },
   ): Promise<void> {
+    if (!player.active || !this.activeMatchPlayerIds().includes(player.id)) {
+      this.sendError(socket, "INVALID_PLAYER", "This player is no longer active in the match.");
+      return;
+    }
     if (!this.state || !isValidAssetReport({
       status: this.state.status,
       reportedRound: payload.round,
@@ -593,6 +746,23 @@ export class GameRoom extends DurableObject<Env> {
       this.sendError(socket, "INVALID_MESSAGE", "Play again is only available after the game.");
       return;
     }
+    const requesterId = this.getAttachment(socket).playerId;
+    if (!requesterId || !this.state.players.some((player) => player.id === requesterId)) {
+      this.sendError(socket, "INVALID_PLAYER", "Only a room participant can start a rematch.");
+      return;
+    }
+    const previousHostPlayerId = this.state.hostPlayerId;
+    const now = Date.now();
+    this.state.players = this.state.players.filter((player) => shouldRetainForRematch(player, now));
+    for (const player of this.state.players) {
+      player.active = true;
+      if (player.connected) player.disconnectExpiresAt = null;
+    }
+    this.state.hostPlayerId = this.state.players.some((player) => player.id === previousHostPlayerId)
+      ? previousHostPlayerId
+      : selectHostPlayerId(this.state.players);
+    this.state.matchPlayerIds = [];
+    this.state.inactivePlayerIds = [];
     this.state.status = "waiting";
     this.state.round = 0;
     this.state.questionSnapshot = [];
@@ -629,7 +799,7 @@ export class GameRoom extends DurableObject<Env> {
     this.state.currentQuestionId = question.id;
     Object.assign(this.state, createPreparingRoundTiming(now, ASSET_PREPARE_TIMEOUT_MS));
     this.state.assetPrepareAttempt = retry ? this.state.assetPrepareAttempt + 1 : 0;
-    this.state.assetReady = Object.fromEntries(this.state.players.map((player) => [player.id, false]));
+    this.state.assetReady = Object.fromEntries(this.activeMatchPlayerIds().map((playerId) => [playerId, false]));
     this.state.resultEndsAt = null;
     this.state.guesses = {};
     this.state.processedEventIds = [];
@@ -699,9 +869,11 @@ export class GameRoom extends DurableObject<Env> {
       return;
     }
     const nextRoundAt = now + RESULT_DURATION_MS;
-    const players: PlayerRoundResult[] = this.state.players.map((player) => {
+    const players: PlayerRoundResult[] = this.state.matchPlayerIds.flatMap((playerId) => {
+      const player = this.state?.players.find((candidate) => candidate.id === playerId);
+      if (!player) return [];
       const guess = this.state?.guesses[player.id];
-      return {
+      return [{
         playerId: player.id,
         nickname: player.nickname,
         submitted: Boolean(guess),
@@ -717,7 +889,7 @@ export class GameRoom extends DurableObject<Env> {
         timeBonus: guess?.timeBonus ?? 0,
         elapsedMs: guess?.elapsedMs ?? null,
         points: guess?.points ?? 0,
-      };
+      }];
     });
     this.state.status = "round_result";
     this.state.prepareDeadline = null;
@@ -735,6 +907,9 @@ export class GameRoom extends DurableObject<Env> {
   private finishGame(): void {
     if (!this.state) return;
     this.state.status = "finished";
+    this.state.prepareDeadline = null;
+    this.state.roundStartedAt = null;
+    this.state.roundEndsAt = null;
     this.state.resultEndsAt = null;
     this.state.failureCode = null;
   }
@@ -743,14 +918,47 @@ export class GameRoom extends DurableObject<Env> {
     if (!this.state) return;
     let changed = false;
     let preparedRound = false;
+    let startedRound = false;
     let assetFailure = false;
 
-    const retainedPlayers = this.state.players.filter((player) => {
-      const expired = !player.connected && player.disconnectExpiresAt !== null && now >= player.disconnectExpiresAt;
-      return !expired;
-    });
-    if (retainedPlayers.length !== this.state.players.length) {
-      this.state.players = retainedPlayers;
+    const expiredPlayerIds = this.state.players
+      .filter((player) => !player.connected && player.disconnectExpiresAt !== null && now >= player.disconnectExpiresAt)
+      .map((player) => player.id);
+    if (expiredPlayerIds.length > 0) {
+      const expired = new Set(expiredPlayerIds);
+      if (expiredPlayerDisposition(this.state.status) === "remove") {
+        this.state.players = this.state.players.filter((player) => !expired.has(player.id));
+      } else {
+        for (const player of this.state.players) {
+          if (!expired.has(player.id)) continue;
+          player.active = false;
+          player.ready = false;
+          player.disconnectExpiresAt = null;
+          if (!this.state.inactivePlayerIds.includes(player.id)) this.state.inactivePlayerIds.push(player.id);
+        }
+      }
+      const hostPlayerId = this.state.hostPlayerId;
+      if (!this.state.players.some((player) => player.id === hostPlayerId && player.active)) {
+        this.state.hostPlayerId = selectHostPlayerId(this.state.players);
+      }
+      changed = true;
+    }
+
+    const activePlayerIds = this.activeMatchPlayerIds();
+    if (this.state.status === "round_preparing" && activePlayerIds.length === 0) {
+      this.finishGame();
+      changed = true;
+    } else if (
+      this.state.status === "round_preparing"
+      && allPlayersAssetReady(activePlayerIds, this.state.assetReady)
+    ) {
+      startedRound = this.startPreparedRound(now);
+      changed = changed || startedRound;
+    } else if (
+      this.state.status === "playing"
+      && allActivePlayersSubmitted(activePlayerIds, this.state.guesses)
+    ) {
+      this.finishRound(now);
       changed = true;
     }
 
@@ -773,7 +981,7 @@ export class GameRoom extends DurableObject<Env> {
       this.state.resultEndsAt !== null &&
       now >= this.state.resultEndsAt
     ) {
-      if (this.state.round >= this.state.settings.totalRounds) this.finishGame();
+      if (this.state.round >= this.state.settings.totalRounds || this.activeMatchPlayerIds().length === 0) this.finishGame();
       else {
         this.beginRoundPreparation(now, false);
         preparedRound = true;
@@ -784,6 +992,7 @@ export class GameRoom extends DurableObject<Env> {
     if (changed) {
       await this.commit();
       if (preparedRound) this.broadcastRoundPrepare();
+      if (startedRound) this.broadcastRoundStart();
       if (assetFailure) this.broadcast({
         type: "error",
         payload: {
@@ -805,6 +1014,8 @@ export class GameRoom extends DurableObject<Env> {
       return {
         id: player.id,
         nickname: player.nickname,
+        slotIndex: player.slotIndex,
+        active: player.active,
         connected: player.connected,
         ready: player.ready,
         score: scoreVisibleToViewer({
@@ -823,6 +1034,8 @@ export class GameRoom extends DurableObject<Env> {
       status: state.status,
       settings: { ...state.settings, mapPool: [...state.settings.mapPool] },
       players,
+      hostPlayerId: state.hostPlayerId,
+      maxPlayers: state.maxPlayers,
       round: state.round,
       questionCount: state.questionCount,
       currentQuestion:
@@ -872,11 +1085,20 @@ export class GameRoom extends DurableObject<Env> {
 
   private broadcastState(): void {
     const serverNow = Date.now();
-    for (const socket of this.ctx.getWebSockets()) this.sendState(socket, serverNow);
+    for (const socket of this.participantSockets()) this.sendState(socket, serverNow);
   }
 
   private broadcast(event: ServerEvent): void {
-    for (const socket of this.ctx.getWebSockets()) this.send(socket, event);
+    for (const socket of this.participantSockets()) this.send(socket, event);
+  }
+
+  private participantSockets(): WebSocket[] {
+    if (!this.state) return [];
+    const roomPlayerIds = this.state.players.map((player) => player.id);
+    return this.ctx.getWebSockets().filter((socket) => canReceiveRoomBroadcast(
+      roomPlayerIds,
+      this.getAttachment(socket).playerId,
+    ));
   }
 
   private broadcastRoundPrepare(): void {
@@ -945,6 +1167,11 @@ export class GameRoom extends DurableObject<Env> {
     return this.state.questionSnapshot.find((question) => question.id === this.state?.currentQuestionId) ?? null;
   }
 
+  private activeMatchPlayerIds(): string[] {
+    if (!this.state) return [];
+    return activeMatchPlayerIds(this.state.matchPlayerIds, this.state.inactivePlayerIds);
+  }
+
   private nextQuestion(): ServerQuestion | null {
     if (!this.state || this.state.round >= this.state.settings.totalRounds) return null;
     return this.state.questionSnapshot[this.state.questionCursor + 1] ?? null;
@@ -965,6 +1192,9 @@ export class GameRoom extends DurableObject<Env> {
   private errorMessage(code: GameErrorCode): string {
     if (code === "ALREADY_SUBMITTED") return "You already submitted a guess for this round.";
     if (code === "ROUND_EXPIRED") return "This round has already ended.";
+    if (code === "NOT_HOST") return "Only the room host can start the match.";
+    if (code === "NOT_ENOUGH_PLAYERS") return "At least two active players are required to start.";
+    if (code === "PLAYERS_NOT_READY") return "Every active player must be connected and ready before the match starts.";
     return code;
   }
 }

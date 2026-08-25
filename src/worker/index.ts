@@ -5,6 +5,7 @@ import {
   CreateRoomRequestSchema,
   QuestionAvailabilityRequestSchema,
   roomSettingsValidationErrorCode,
+  type CreateRoomRequest,
   type RoomSettings,
   type ServerRegion,
 } from "../shared/roomSettings";
@@ -110,18 +111,32 @@ function invalidRoomSettingsResponse(error: Parameters<typeof roomSettingsValida
   return Response.json({ error: code }, { status: 400, headers: { "cache-control": "no-store" } });
 }
 
-async function initializeRoom(env: Env, roomCode: string, settings: RoomSettings, questionCount: number): Promise<Response> {
+async function initializeRoom(
+  env: Env,
+  roomCode: string,
+  settings: RoomSettings,
+  questionCount: number,
+  creator: CreateRoomRequest["creator"],
+): Promise<Response> {
   return roomStub(env, roomCode, settings.serverRegion).fetch(`https://game-room/initialize?roomCode=${roomCode}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ settings, questionCount }),
+    body: JSON.stringify({ settings, questionCount, creator }),
   });
 }
 
 async function createRoom(request: Request, env: Env): Promise<Response> {
   const body = await request.json().catch(() => null);
   const parsed = CreateRoomRequestSchema.safeParse(body);
-  if (!parsed.success) return invalidRoomSettingsResponse(parsed.error);
+  if (!parsed.success) {
+    if (parsed.error.issues.some((issue) => issue.path[0] === "creator")) {
+      return Response.json(
+        { error: "INVALID_PLAYER" },
+        { status: 400, headers: { "cache-control": "no-store" } },
+      );
+    }
+    return invalidRoomSettingsResponse(parsed.error);
+  }
 
   let availableQuestions: number;
   try {
@@ -142,7 +157,13 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const roomCode = generateRoomCode();
-    const response = await initializeRoom(env, roomCode, parsed.data.settings, availableQuestions);
+    const response = await initializeRoom(
+      env,
+      roomCode,
+      parsed.data.settings,
+      availableQuestions,
+      parsed.data.creator,
+    );
     if (response.status === 201) {
       return Response.json({ roomCode, settings: parsed.data.settings }, { status: 201 });
     }

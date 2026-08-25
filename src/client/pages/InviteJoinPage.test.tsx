@@ -13,7 +13,7 @@ const validPreview = {
   roomCode: "87MDB",
   reason: null,
   playerCount: 1,
-  maxPlayers: 2,
+  maxPlayers: 5,
   settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
 };
 
@@ -44,6 +44,7 @@ describe("room invite join page", () => {
     expect(screen.getByText("87MDB")).toBeTruthy();
     expect(screen.getByText("5 ROUNDS")).toBeTruthy();
     expect(screen.getByText("20 SEC")).toBeTruthy();
+    expect(screen.getByText("1 / 5 PLAYERS")).toBeTruthy();
     expect(window.location.pathname).toBe("/join/87MDB");
     expect(document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content).toBe("noindex, nofollow");
   });
@@ -95,11 +96,12 @@ describe("room invite join page", () => {
       ...validPreview,
       joinable: false,
       reason,
-      playerCount: reason === "full" ? 2 : 1,
+      playerCount: reason === "full" ? 5 : 1,
     })));
     render(<InviteJoinPage roomCode="87MDB" />);
 
     expect(await screen.findByText(title)).toBeTruthy();
+    if (reason === "full") expect(screen.getByText("This room already has 5 players.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "JOIN ROOM" })).toBeNull();
   });
 });

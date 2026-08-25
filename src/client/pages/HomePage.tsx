@@ -136,7 +136,8 @@ export function HomePage() {
   };
 
   const createRoom = async () => {
-    if (!validateNickname()) return;
+    const creatorNickname = validateNickname();
+    if (!creatorNickname) return;
     setSettingsPanelError("");
     if (!settingsResult.success) {
       setError("Enter valid match settings: 1–50 rounds, 10–120 seconds, and at least one map.");
@@ -172,7 +173,10 @@ export function HomePage() {
     setBusy(true);
     setError("");
     try {
-      const createRequest: CreateRoomRequest = { settings: settingsResult.data };
+      const createRequest: CreateRoomRequest = {
+        settings: settingsResult.data,
+        creator: { playerId: getPlayerId(), nickname: creatorNickname },
+      };
       const response = await fetch("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -304,7 +308,7 @@ export function HomePage() {
                   disabled={busy}
                 >
                   <span>MULTIPLAYER</span>
-                  <small id="multiplayer-mode-description">Create a match and invite a friend.</small>
+                  <small id="multiplayer-mode-description">Create a match and invite up to four friends.</small>
                   <b aria-hidden="true">→</b>
                 </button>
                 <button
@@ -434,7 +438,7 @@ export function HomePage() {
           </p>
           <p>
             Practice alone in Single Player, or create a private room and share its five-character code for a
-            synchronized two-player match. Every round reveals the answer and a detailed score breakdown.
+            synchronized 2–5 player match. Every round reveals the answer and a detailed score breakdown.
           </p>
         </div>
 

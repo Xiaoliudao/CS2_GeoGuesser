@@ -29,4 +29,18 @@ describe("authoritative round timing", () => {
     expect(createPlayingRoundTiming("playing", "question-1", 2_000_000, { roundDurationSeconds: 20 })).toBeNull();
     expect(createPlayingRoundTiming("round_preparing", null, 2_000_000, { roundDurationSeconds: 20 })).toBeNull();
   });
+
+  it("gives five delayed clients one identical 20-second server deadline", () => {
+    const timing = createPlayingRoundTiming(
+      "round_preparing",
+      "question-5-player",
+      5_000_000,
+      { roundDurationSeconds: 20 },
+    )!;
+    const simulatedNetworkDelays = [5, 80, 260, 900, 1_800];
+    const receivedTimings = simulatedNetworkDelays.map(() => ({ ...timing }));
+    expect(new Set(receivedTimings.map(({ roundStartedAt }) => roundStartedAt)).size).toBe(1);
+    expect(new Set(receivedTimings.map(({ roundEndsAt }) => roundEndsAt)).size).toBe(1);
+    expect(timing.roundEndsAt! - timing.roundStartedAt!).toBe(20_000);
+  });
 });

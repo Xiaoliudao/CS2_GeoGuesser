@@ -1,6 +1,7 @@
 import { getMap, getRadarLayer, type MapId, type RadarLayerId } from "../../shared/maps";
 import { radarMediaUrl } from "../../shared/mediaUrls";
-import type { MapPoint, RoundResultState } from "../../shared/types";
+import { MAX_MULTIPLAYER_PLAYERS } from "../../shared/multiplayer";
+import type { MapPoint, PublicPlayer, RoundResultState } from "../../shared/types";
 import { RadarMarker } from "./RadarMarker";
 import { RadarViewport } from "./RadarViewport";
 
@@ -10,6 +11,12 @@ export interface ResultRadarMarker {
   className: string;
   label: string;
   ariaLabel: string;
+}
+
+export interface ResultRadarLegendItem {
+  key: string;
+  label: string;
+  className?: string;
 }
 
 export function ResultRadarView({
@@ -24,7 +31,7 @@ export function ResultRadarView({
   correctLayerId: RadarLayerId;
   correctPoint: MapPoint;
   markers: ResultRadarMarker[];
-  legend: string[];
+  legend: Array<string | ResultRadarLegendItem>;
   assetOrigin?: string;
 }) {
   const map = getMap(correctMapId);
@@ -39,7 +46,11 @@ export function ResultRadarView({
           <RadarMarker key={marker.key} point={marker.point} className={`result-marker ${marker.className}`} label={marker.label} ariaLabel={marker.ariaLabel} />
         ))}
       </RadarViewport>
-      <div className="marker-legend">{legend.map((label) => <span key={label}>{label}</span>)}</div>
+      <div className="marker-legend">
+        {legend.map((item) => typeof item === "string"
+          ? <span key={item}>{item}</span>
+          : <span className={item.className} key={item.key}><i aria-hidden="true" />{item.label}</span>)}
+      </div>
     </div>
   );
 }
@@ -47,22 +58,37 @@ export function ResultRadarView({
 export function RoundRadarResult({
   result,
   playerId,
+  players = [],
   assetOrigin = "",
 }: {
   result: RoundResultState;
   playerId: string;
+  players?: PublicPlayer[];
   assetOrigin?: string;
 }) {
-  const markers: ResultRadarMarker[] = result.players
+  const playerSlots = new Map(players.map((player) => [player.id, player.slotIndex]));
+  const markerData = result.players
     .filter((player) => player.mapGuess === result.correctMapId && player.layerGuess === result.correctLayerId && player.pointGuess)
-    .map((player) => {
+    .map((player, fallbackIndex) => {
       const isMe = player.playerId === playerId;
+      const knownSlot = playerSlots.get(player.playerId);
+      const slotIndex = Number.isInteger(knownSlot)
+        ? Math.max(0, Math.min(MAX_MULTIPLAYER_PLAYERS - 1, knownSlot!))
+        : Math.max(0, Math.min(MAX_MULTIPLAYER_PLAYERS - 1, fallbackIndex));
+      const seat = `P${slotIndex + 1}`;
       return {
-        key: player.playerId,
-        point: player.pointGuess!,
-        className: isMe ? "your-point" : "opponent-point",
-        label: isMe ? "YOU" : player.nickname,
-        ariaLabel: `${isMe ? "Your" : `${player.nickname}'s`} guessed point`,
+        marker: {
+          key: player.playerId,
+          point: player.pointGuess!,
+          className: `player-point player-slot-${slotIndex + 1} ${isMe ? "your-point" : "other-player-point"}`,
+          label: seat,
+          ariaLabel: `${seat} ${isMe ? "your" : `${player.nickname}'s`} guessed point`,
+        } satisfies ResultRadarMarker,
+        legend: {
+          key: player.playerId,
+          label: `${seat} ${player.nickname}${isMe ? " · YOU" : ""}`,
+          className: `player-slot-${slotIndex + 1}`,
+        } satisfies ResultRadarLegendItem,
       };
     });
   return (
@@ -70,8 +96,8 @@ export function RoundRadarResult({
       correctMapId={result.correctMapId}
       correctLayerId={result.correctLayerId}
       correctPoint={result.correctPoint}
-      markers={markers}
-      legend={["✓ Correct", "Y You", "P2 Opponent"]}
+      markers={markerData.map(({ marker }) => marker)}
+      legend={["✓ Correct", ...markerData.map(({ legend }) => legend)]}
       assetOrigin={assetOrigin}
     />
   );

@@ -28,7 +28,7 @@ export function useRoundPreparation(
   }, [room?.assetOrigin, room?.settings.mapPool.join(",")]);
 
   useEffect(() => {
-    if (!room || room.status !== "round_preparing" || !question || !preparationKey) {
+    if (!room || room.status !== "round_preparing" || !question || !preparationKey || me?.active === false) {
       setLoadState("idle");
       setErrorReason(null);
       return;
@@ -67,11 +67,11 @@ export function useRoundPreparation(
       console.warn(JSON.stringify({ event: "QUESTION_ASSET_ERROR", round: room.round, reason }));
     });
     return () => controller.abort();
-  }, [me?.assetReady, preparationKey, question?.imageUrl, radarUrls, retryNonce, room?.round, room?.status, send]);
+  }, [me?.active, me?.assetReady, preparationKey, question?.imageUrl, radarUrls, retryNonce, room?.round, room?.status, send]);
 
   useEffect(() => {
     const nextQuestion = room?.nextQuestion;
-    if (!room || !nextQuestion || (room.status !== "playing" && room.status !== "round_result")) return;
+    if (!room || !nextQuestion || me?.active === false || (room.status !== "playing" && room.status !== "round_result")) return;
     const controller = new AbortController();
     void preloadImage(nextQuestion.imageUrl, { signal: controller.signal })
       .then((result) => console.info(JSON.stringify({ event: "NEXT_QUESTION_PREFETCHED", loadMs: result.elapsedMs })))
@@ -80,7 +80,7 @@ export function useRoundPreparation(
         console.warn(JSON.stringify({ event: "NEXT_QUESTION_PREFETCH_FAILED" }));
       });
     return () => controller.abort();
-  }, [room?.nextQuestion?.questionId, room?.nextQuestion?.imageUrl, room?.status]);
+  }, [me?.active, room?.nextQuestion?.questionId, room?.nextQuestion?.imageUrl, room?.status]);
 
   const retry = useCallback(() => setRetryNonce((current) => current + 1), []);
   return { loadState, errorReason, retry };

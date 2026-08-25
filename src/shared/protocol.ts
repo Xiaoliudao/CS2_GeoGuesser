@@ -4,6 +4,7 @@ import type { GameErrorCode, GameRoomState, MapPoint, PublicPlayer, RoundResultS
 export const CLIENT_EVENTS = {
   JOIN: "player:join",
   READY: "player:ready",
+  START_MATCH: "game:start",
   GUESS_SUBMIT: "guess:submit",
   SYNC: "room:sync",
   PING: "ping",
@@ -32,6 +33,7 @@ export type AssetLoadErrorReason = (typeof ASSET_LOAD_ERROR_REASONS)[number];
 export type ClientEvent =
   | { type: "player:join"; payload: { playerId: string; nickname: string } }
   | { type: "player:ready" }
+  | { type: "game:start" }
   | {
       type: "guess:submit";
       payload: { round: number; eventId: string; mapId: MapId; layerId: RadarLayerId; point: MapPoint };

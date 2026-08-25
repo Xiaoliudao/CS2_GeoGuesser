@@ -11,9 +11,12 @@ describe("RoundPreparation", () => {
       roomCode: "ABCDE",
       status: "round_preparing",
       settings: { ...DEFAULT_ROOM_SETTINGS, mapPool: [...DEFAULT_ROOM_SETTINGS.mapPool] },
+      hostPlayerId: "player-a",
+      maxPlayers: 5,
       players: [
-        { id: "player-a", nickname: "Alpha", connected: true, ready: true, score: 0, submitted: false, assetReady: false },
-        { id: "player-b", nickname: "Bravo", connected: true, ready: true, score: 0, submitted: false, assetReady: false },
+        { id: "player-a", nickname: "Alpha", slotIndex: 0, active: true, connected: true, ready: true, score: 0, submitted: false, assetReady: false },
+        { id: "player-b", nickname: "Bravo", slotIndex: 1, active: true, connected: true, ready: true, score: 0, submitted: false, assetReady: false },
+        { id: "player-c", nickname: "Charlie", slotIndex: 2, active: true, connected: false, ready: true, score: 0, submitted: false, assetReady: false },
       ],
       round: 1,
       questionCount: 10,
@@ -39,7 +42,10 @@ describe("RoundPreparation", () => {
     }));
 
     expect(markup).toContain("LOADING ROUND");
-    expect(markup).toContain("The guessing timer will start only after both players");
+    expect(markup).toContain("every active player");
+    expect(markup).toContain("0 / 3 READY");
+    expect(markup).toContain("P3");
+    expect(markup).toContain("RECONNECTING");
     expect(markup).not.toContain("TIME LEFT");
   });
 });

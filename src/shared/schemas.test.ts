@@ -79,4 +79,9 @@ describe("normalized point validation", () => {
       payload: { clientSentAt: Number.NaN },
     }).success).toBe(false);
   });
+
+  it("accepts a payload-free start request and rejects client host claims", () => {
+    expect(clientEventSchema.safeParse({ type: "game:start" }).success).toBe(true);
+    expect(clientEventSchema.safeParse({ type: "game:start", payload: { host: true } }).success).toBe(false);
+  });
 });

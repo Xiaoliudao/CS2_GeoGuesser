@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { ASSET_LOAD_ERROR_REASONS, CLIENT_EVENTS } from "./protocol";
 import { MAP_IDS, isLayerForMap } from "./maps";
+import { multiplayerNicknameSchema, multiplayerPlayerIdSchema } from "./multiplayer";
 
 export const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{5}$/;
 
-export const nicknameSchema = z.string().trim().min(2).max(20);
+export const nicknameSchema = multiplayerNicknameSchema;
 export const roomCodeSchema = z.string().trim().toUpperCase().regex(ROOM_CODE_PATTERN);
-export const playerIdSchema = z.string().uuid();
+export const playerIdSchema = multiplayerPlayerIdSchema;
 
 export const clientEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -17,6 +18,7 @@ export const clientEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({ type: z.literal(CLIENT_EVENTS.READY) }),
+  z.object({ type: z.literal(CLIENT_EVENTS.START_MATCH) }).strict(),
   z.object({
     type: z.literal(CLIENT_EVENTS.GUESS_SUBMIT),
     payload: z.object({

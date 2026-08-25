@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_MULTIPLAYER_PLAYERS } from "../../shared/multiplayer";
 import { DEFAULT_ROOM_SETTINGS } from "../../shared/roomSettings";
 import { RoomInvitePreviewSchema } from "../../shared/roomInvite";
 import { missingRoomInvitePreview, roomInvitePreview } from "./roomInvitePreview";
@@ -22,7 +23,7 @@ describe("safe room invite preview", () => {
       roomCode: "87MDB",
       reason: null,
       playerCount: 1,
-      maxPlayers: 2,
+      maxPlayers: MAX_MULTIPLAYER_PLAYERS,
       settings: {
         totalRounds: DEFAULT_ROOM_SETTINGS.totalRounds,
         roundDurationSeconds: DEFAULT_ROOM_SETTINGS.roundDurationSeconds,
@@ -34,8 +35,26 @@ describe("safe room invite preview", () => {
   });
 
   it("blocks strangers when full or playing", () => {
-    expect(roomInvitePreview({ ...base, status: "waiting", playerIds: ["a", "b"] })).toMatchObject({ joinable: false, reason: "full" });
+    expect(roomInvitePreview({ ...base, status: "waiting", playerIds: ["a", "b", "c", "d"] })).toMatchObject({
+      joinable: true,
+      playerCount: 4,
+      maxPlayers: MAX_MULTIPLAYER_PLAYERS,
+    });
+    expect(roomInvitePreview({ ...base, status: "waiting", playerIds: ["a", "b", "c", "d", "e"] })).toMatchObject({
+      joinable: false,
+      reason: "full",
+      playerCount: 5,
+    });
     expect(roomInvitePreview({ ...base, status: "playing" })).toMatchObject({ joinable: false, reason: "in_progress" });
+  });
+
+  it("allows a known player to reconnect even when all five slots are reserved", () => {
+    expect(roomInvitePreview({
+      ...base,
+      status: "waiting",
+      playerIds: ["player-a", "b", "c", "d", "e"],
+      viewerPlayerId: "player-a",
+    })).toMatchObject({ joinable: true, reconnectable: true, playerCount: 5 });
   });
 
   it("allows only an existing player to reconnect to an active match", () => {

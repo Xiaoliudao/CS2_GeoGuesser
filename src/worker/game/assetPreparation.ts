@@ -17,7 +17,7 @@ export function isValidAssetReport(context: AssetReportContext): boolean {
 }
 
 export function allPlayersAssetReady(playerIds: readonly string[], readiness: Readonly<Record<string, boolean>>): boolean {
-  return playerIds.length === 2 && playerIds.every((playerId) => readiness[playerId] === true);
+  return playerIds.length > 0 && playerIds.every((playerId) => readiness[playerId] === true);
 }
 
 export function hasAssetPrepareTimedOut(prepareDeadline: number | null, now: number): boolean {
