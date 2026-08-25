@@ -60,6 +60,33 @@ async function getOrCreateOrganization() {
   });
 }
 
+async function ensureCloudflareIdentityProvider() {
+  const identityProviders = await cloudflare(
+    "list_access_identity_providers",
+    `/accounts/${accountId}/access/identity_providers?per_page=100`,
+  );
+  const existing = Array.isArray(identityProviders)
+    ? identityProviders.find((identityProvider) => identityProvider?.type === "cloudflare")
+    : null;
+
+  if (existing) return existing;
+
+  return cloudflare(
+    "create_cloudflare_identity_provider",
+    `/accounts/${accountId}/access/identity_providers`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Cloudflare",
+        type: "cloudflare",
+        config: {
+          restrict_to_account_members: true,
+        },
+      }),
+    },
+  );
+}
+
 function applicationHasDomain(application) {
   return application?.domain === APP_DOMAIN
     || application?.destinations?.some(
@@ -77,6 +104,11 @@ async function configureAccess() {
   const organization = await getOrCreateOrganization();
   if (typeof organization?.auth_domain !== "string" || !organization.auth_domain.endsWith(".cloudflareaccess.com")) {
     throw new Error("CLOUDFLARE_ACCESS_ORGANIZATION_INVALID");
+  }
+
+  const identityProvider = await ensureCloudflareIdentityProvider();
+  if (identityProvider?.type !== "cloudflare") {
+    throw new Error("CLOUDFLARE_IDENTITY_PROVIDER_INVALID");
   }
 
   const applications = await cloudflare(
@@ -132,7 +164,7 @@ async function configureAccess() {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (!outputPath) throw new Error("GITHUB_OUTPUT_MISSING");
   appendFileSync(outputPath, `access_aud=${application.aud}\nteam_domain=https://${organization.auth_domain}\n`);
-  console.log("Cloudflare Access application and account-member policy are ready.");
+  console.log("Cloudflare identity provider, Access application, and account-member policy are ready.");
 }
 
 function safeMessage(error) {
