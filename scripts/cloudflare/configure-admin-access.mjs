@@ -14,6 +14,7 @@ class CloudflareApiError extends Error {
     this.name = "CloudflareApiError";
     this.operation = operation;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -44,7 +45,9 @@ async function getOrCreateOrganization() {
     );
     if (existing) return existing;
   } catch (error) {
-    if (!(error instanceof CloudflareApiError) || error.status !== 404) throw error;
+    const organizationMissing = error instanceof CloudflareApiError
+      && (error.status === 404 || error.details.includes("access.api.error.not_enabled"));
+    if (!organizationMissing) throw error;
   }
   const authDomain = `cs2-geoguesser-${accountId.slice(0, 8)}.cloudflareaccess.com`;
   return cloudflare("create_zero_trust_organization", `/accounts/${accountId}/access/organizations`, {
