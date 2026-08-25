@@ -2,6 +2,7 @@ import { getMap, getRadarLayer } from "../../shared/maps";
 import { radarMediaUrl } from "../../shared/mediaUrls";
 import type { RoundResultState } from "../../shared/types";
 import { RadarMarker } from "./RadarMarker";
+import { RadarViewport } from "./RadarViewport";
 
 export function RoundRadarResult({
   result,
@@ -21,8 +22,11 @@ export function RoundRadarResult({
   return (
     <div className="result-radar-panel">
       <div className="radar-title"><span>CORRECT MAP · {layer.name}</span><strong>{map.name}</strong></div>
-      <div className="radar-image-wrap result-radar">
-        <img src={radarMediaUrl(map.id, layer.id, assetOrigin)} alt={`${map.name} ${layer.name.toLowerCase()} result radar`} draggable={false} />
+      <RadarViewport
+        className="result-radar"
+        src={radarMediaUrl(map.id, layer.id, assetOrigin)}
+        alt={`${map.name} ${layer.name.toLowerCase()} result radar`}
+      >
         <RadarMarker
           point={result.correctPoint}
           className="result-marker correct-point"
@@ -42,7 +46,7 @@ export function RoundRadarResult({
             />
           );
         })}
-      </div>
+      </RadarViewport>
       <div className="marker-legend"><span>✓ Correct</span><span>Y You</span><span>P2 Opponent</span></div>
     </div>
   );

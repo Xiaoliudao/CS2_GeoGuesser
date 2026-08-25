@@ -18,8 +18,8 @@ export function RadarMarker({ point, className, label, ariaLabel }: RadarMarkerP
       <span className="radar-marker-hit-area" aria-hidden="true">
         <span className="radar-marker-visual" />
         <span className="radar-marker-center" />
+        <b className="radar-marker-label">{label}</b>
       </span>
-      <b className="radar-marker-label">{label}</b>
     </span>
   );
 }

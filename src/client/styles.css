@@ -358,11 +358,20 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .layer-tabs button.is-active { border-color: var(--orange); color: white; background: rgba(255,107,44,.14); }
 .radar-picker { text-align: center; }
 .radar-image-wrap { position: relative; width: 100%; max-width: 660px; margin: 0 auto; line-height: 0; border: 1px solid #3a484e; background: #080c0e; overflow: hidden; }
-.radar-image-wrap > img { display: block; width: 100%; height: auto; cursor: crosshair; user-select: none; }
-.radar-picker.is-disabled .radar-image-wrap > img { cursor: default; }
+.radar-gesture-surface { position: relative; width: 100%; overflow: hidden; touch-action: none; cursor: grab; overscroll-behavior: contain; }
+.radar-viewport.is-selectable .radar-gesture-surface { cursor: crosshair; }
+.radar-viewport.is-dragging .radar-gesture-surface { cursor: grabbing; }
+.radar-transform-layer { position: relative; width: 100%; transform-origin: 0 0; will-change: transform; }
+.radar-transform-layer > img { display: block; width: 100%; height: auto; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+.radar-zoom-controls { position: absolute; top: 8px; right: 8px; z-index: 20; display: grid; grid-template-columns: 40px 50px 40px; grid-template-rows: 40px 40px; gap: 2px; padding: 3px; line-height: 1; background: rgba(7,10,12,.88); border: 1px solid rgba(118,136,144,.65); box-shadow: 0 3px 14px rgba(0,0,0,.34); }
+.radar-zoom-controls button, .radar-zoom-controls output { display: grid; place-items: center; min-width: 0; min-height: 0; border: 1px solid #3a484e; color: #dce4e7; background: #11191d; font-size: 16px; font-weight: 900; line-height: 1; }
+.radar-zoom-controls button { padding: 0; touch-action: manipulation; }
+.radar-zoom-controls button:hover:not(:disabled), .radar-zoom-controls button:focus-visible { color: white; border-color: var(--orange); background: rgba(255,107,44,.17); outline: none; }
+.radar-zoom-controls output { color: #aebcc2; font-size: 9px; letter-spacing: .05em; }
+.radar-zoom-controls .radar-reset-button { grid-column: 1 / -1; min-height: 40px; font-size: 15px; }
 .radar-instruction { margin: 9px 0 0; color: #738086; font-size: 8px; font-weight: 700; letter-spacing: .14em; }
-.radar-marker { position: absolute; width: var(--radar-marker-hit-size); height: var(--radar-marker-hit-size); transform: translate(-50%, -50%); z-index: 3; pointer-events: none; color: var(--orange-bright); line-height: 1; }
-.radar-marker-hit-area { position: absolute; inset: 0; display: grid; place-items: center; }
+.radar-marker { position: absolute; width: 0; height: 0; z-index: 3; pointer-events: none; color: var(--orange-bright); line-height: 1; }
+.radar-marker-hit-area { position: absolute; left: 0; top: 0; width: var(--radar-marker-hit-size); height: var(--radar-marker-hit-size); display: grid; place-items: center; transform: scale(var(--radar-marker-inverse-scale, 1)) translate(-50%, -50%); transform-origin: 0 0; }
 .radar-marker-visual { position: relative; display: block; width: var(--radar-marker-size); height: var(--radar-marker-size); border: 1px solid currentColor; border-radius: 50%; background: rgba(7,10,12,.72); box-shadow: 0 0 0 1px rgba(0,0,0,.72); }
 .radar-marker-center { position: absolute; left: 50%; top: 50%; width: var(--radar-marker-center-size); height: var(--radar-marker-center-size); transform: translate(-50%, -50%); border-radius: 50%; background: currentColor; box-shadow: 0 0 0 1px rgba(4,7,8,.9); }
 .radar-marker-label { position: absolute; left: 50%; top: calc(50% + 13px); transform: translateX(-50%); white-space: nowrap; padding: 3px 4px; color: currentColor; font-size: 6px; letter-spacing: .08em; background: rgba(7,10,12,.88); border: 1px solid currentColor; }
@@ -392,7 +401,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .round-result-layout { display: grid; grid-template-columns: 55fr 45fr; gap: 14px; }
 .result-radar-panel, .result-question-image { min-width: 0; padding: 16px; background: #0d1417; border: 1px solid var(--line); }
 .result-radar { max-width: 600px; }
-.result-radar > img { cursor: default; }
+.result-radar .radar-gesture-surface { cursor: grab; }
 .result-marker .radar-marker-visual { background: rgba(7,10,12,.82); }
 .correct-point { color: #d7ff87; z-index: 6; }.correct-point .radar-marker-visual { box-shadow: 0 0 0 1px currentColor, 0 0 7px rgba(163,225,81,.55); }
 .your-point { color: #ff9a6d; z-index: 5; }.your-point .radar-marker-visual { border-width: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.72), 0 0 7px rgba(255,107,44,.5); }

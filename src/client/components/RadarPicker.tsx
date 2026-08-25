@@ -1,6 +1,8 @@
 import { getMap, getRadarLayer, type MapId, type RadarLayerId } from "../../shared/maps";
 import type { MapPoint } from "../../shared/types";
 import { RadarMarker } from "./RadarMarker";
+import { RadarViewport } from "./RadarViewport";
+import { screenPointToRadarPoint } from "./radarViewportMath";
 
 export interface RadarPickerProps {
   mapId: MapId;
@@ -18,11 +20,11 @@ export function pointFromImageRect(
   clientX: number,
   clientY: number,
 ): MapPoint {
-  const clamp = (value: number) => Math.min(1, Math.max(0, value));
-  return {
-    x: clamp((clientX - rect.left) / rect.width),
-    y: clamp((clientY - rect.top) / rect.height),
-  };
+  return screenPointToRadarPoint(
+    { scale: 1, translateX: 0, translateY: 0 },
+    { width: rect.width, height: rect.height },
+    { x: clientX - rect.left, y: clientY - rect.top },
+  );
 }
 
 export function RadarPicker({
@@ -40,16 +42,12 @@ export function RadarPicker({
   if (!layer) throw new Error(`Unknown radar layer ${mapId}/${layerId}.`);
   return (
     <div className={`radar-picker ${disabled ? "is-disabled" : ""}`}>
-      <div className="radar-image-wrap">
-        <img
-          src={radarUrl ?? layer.radarUrl}
-          alt={`${map.name} ${layer.name.toLowerCase()} radar. Click to place your guess.`}
-          draggable={false}
-          onClick={(event) => {
-            if (disabled) return;
-            onChange(pointFromImageRect(event.currentTarget.getBoundingClientRect(), event.clientX, event.clientY));
-          }}
-        />
+      <RadarViewport
+        src={radarUrl ?? layer.radarUrl}
+        alt={`${map.name} ${layer.name.toLowerCase()} radar. Tap to place a guess or drag to pan.`}
+        pointSelectionEnabled={!disabled}
+        onPointSelect={onChange}
+      >
         {value && (
           <RadarMarker
             point={value}
@@ -58,8 +56,8 @@ export function RadarPicker({
             ariaLabel={`Guess at ${(value.x * 100).toFixed(3)}%, ${(value.y * 100).toFixed(3)}%`}
           />
         )}
-      </div>
-      {!value && <p className="radar-instruction">CLICK THE RADAR TO PLACE YOUR MARKER</p>}
+      </RadarViewport>
+      {!value && !disabled && <p className="radar-instruction">TAP TO MARK · DRAG TO PAN · PINCH OR SCROLL TO ZOOM</p>}
     </div>
   );
 }
