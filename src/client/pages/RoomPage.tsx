@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CLIENT_EVENTS, type ClientEvent } from "../../shared/protocol";
 import { navigate, registerNavigationBlocker, type NavigationAttempt } from "../App";
 import { ConfirmLeaveDialog, type ConfirmLeaveMode } from "../components/ConfirmLeaveDialog";
+import { ConfirmKickDialog } from "../components/ConfirmKickDialog";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { CopyRoomCodeButton } from "../components/CopyRoomCodeButton";
 import { GameResult } from "../components/GameResult";
@@ -28,21 +29,56 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
     send,
     leaveRoom,
     leaveConfirmed,
+    kickedReason,
   } = useGameSocket(roomCode, playerId, nickname);
   const [leaveMode, setLeaveMode] = useState<ConfirmLeaveMode | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
+  const [kickTargetId, setKickTargetId] = useState<string | null>(null);
+  const [isKicking, setIsKicking] = useState(false);
+  const [kickError, setKickError] = useState<string | null>(null);
   const roomRef = useRef(room);
   const leaveModeRef = useRef<ConfirmLeaveMode | null>(null);
   const isLeavingRef = useRef(false);
   const hasNavigatedAfterLeaveRef = useRef(false);
   const pendingNavigationRef = useRef<NavigationAttempt>({ path: "/", source: "push" });
+  const kickTimeoutRef = useRef<number | null>(null);
   roomRef.current = room;
   const preparation = useRoundPreparation(room, playerId, send);
   const activePlayerCount = room?.players.filter((player) => player.active).length ?? 0;
   const canInvite = room?.status === "waiting" && activePlayerCount < room.maxPlayers;
   const viewer = room?.players.find((player) => player.id === playerId);
   const viewerIsDnf = Boolean(room && room.status !== "waiting" && viewer?.active === false);
+  const kickTarget = kickTargetId
+    ? room?.players.find((player) => player.id === kickTargetId) ?? null
+    : null;
+
+  const closeKickDialog = useCallback(() => {
+    if (kickTimeoutRef.current !== null) window.clearTimeout(kickTimeoutRef.current);
+    kickTimeoutRef.current = null;
+    setKickTargetId(null);
+    setIsKicking(false);
+    setKickError(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (kickTimeoutRef.current !== null) window.clearTimeout(kickTimeoutRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!isKicking || !kickTargetId || !room) return;
+    const currentTarget = room.players.find((player) => player.id === kickTargetId);
+    if (!currentTarget || !currentTarget.active) closeKickDialog();
+  }, [closeKickDialog, isKicking, kickTargetId, room]);
+
+  useEffect(() => {
+    if (!isKicking || !error) return;
+    if (!["NOT_HOST", "CANNOT_KICK_HOST", "PLAYER_NOT_FOUND", "KICK_NOT_ALLOWED", "INVALID_PLAYER"].includes(error.code)) return;
+    if (kickTimeoutRef.current !== null) window.clearTimeout(kickTimeoutRef.current);
+    kickTimeoutRef.current = null;
+    setIsKicking(false);
+    setKickError(error.message);
+  }, [error, isKicking]);
 
   useEffect(() => {
     if (!nickname) navigate("/");
@@ -118,6 +154,35 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
     setLeaveError(null);
   }, []);
 
+  const requestKick = useCallback((targetPlayerId: string) => {
+    const currentRoom = roomRef.current;
+    const target = currentRoom?.players.find((player) => player.id === targetPlayerId);
+    if (
+      !currentRoom
+      || currentRoom.hostPlayerId !== playerId
+      || !target?.active
+      || target.id === currentRoom.hostPlayerId
+      || currentRoom.status === "finished"
+    ) return;
+    setKickError(null);
+    setKickTargetId(targetPlayerId);
+  }, [playerId]);
+
+  const confirmKick = useCallback(() => {
+    if (!kickTargetId || isKicking) return;
+    setKickError(null);
+    if (!send({ type: CLIENT_EVENTS.KICK, payload: { targetPlayerId: kickTargetId } })) {
+      setKickError("The kick request could not be sent. Please wait for the connection to recover.");
+      return;
+    }
+    setIsKicking(true);
+    kickTimeoutRef.current = window.setTimeout(() => {
+      kickTimeoutRef.current = null;
+      setIsKicking(false);
+      setKickError("The server did not confirm the removal. Check the connection and try again.");
+    }, 5_000);
+  }, [isKicking, kickTargetId, send]);
+
   useEffect(() => registerNavigationBlocker((navigation) => {
     const targetPath = new URL(navigation.path, window.location.href).pathname;
     if (targetPath.toUpperCase() === `/ROOM/${roomCode}`) return false;
@@ -179,11 +244,22 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
         </div>
       )}
 
-      {!room && (
+      {!room && !kickedReason && (
         <section className="loading-room">
           <div className="spinner" />
           <h2>JOINING ROOM</h2>
           <p>Establishing a secure game channel…</p>
+        </section>
+      )}
+
+      {kickedReason && (
+        <section className="stage-card kicked-room-panel" aria-live="assertive">
+          <div className="stage-kicker">ROOM ACCESS ENDED</div>
+          <h2>YOU WERE REMOVED</h2>
+          <p>The room host removed you from this room. This room session cannot reconnect.</p>
+          <button className="primary-button" type="button" onClick={() => navigate("/", { bypassBlocker: true })}>
+            BACK TO HOME
+          </button>
         </section>
       )}
 
@@ -203,6 +279,8 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           playerId={playerId}
           onReady={() => sendEvent({ type: CLIENT_EVENTS.READY })}
           onStart={() => sendEvent({ type: CLIENT_EVENTS.START_MATCH })}
+          onKick={requestKick}
+          kickingPlayerId={isKicking ? kickTargetId : null}
         />
       )}
       {room?.status === "round_preparing" && !viewerIsDnf && (
@@ -212,6 +290,8 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           loadState={preparation.loadState}
           errorReason={preparation.errorReason}
           onRetry={preparation.retry}
+          onKick={requestKick}
+          kickingPlayerId={isKicking ? kickTargetId : null}
         />
       )}
       {room?.status === "playing" && !viewerIsDnf && (
@@ -221,9 +301,18 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           serverClockOffsetMs={serverClockOffsetMs}
           clockSynchronized={clockSynchronized}
           onSend={sendEvent}
+          onKick={requestKick}
+          kickingPlayerId={isKicking ? kickTargetId : null}
         />
       )}
-      {room?.status === "round_result" && <RoundResult room={room} playerId={playerId} />}
+      {room?.status === "round_result" && (
+        <RoundResult
+          room={room}
+          playerId={playerId}
+          onKick={requestKick}
+          kickingPlayerId={isKicking ? kickTargetId : null}
+        />
+      )}
       {room?.status === "finished" && (
         <GameResult
           room={room}
@@ -240,6 +329,13 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
         errorMessage={leaveError}
         onCancel={cancelLeave}
         onConfirm={performLeave}
+      />
+      <ConfirmKickDialog
+        target={kickTarget}
+        isKicking={isKicking}
+        errorMessage={kickError}
+        onCancel={closeKickDialog}
+        onConfirm={confirmKick}
       />
     </main>
   );

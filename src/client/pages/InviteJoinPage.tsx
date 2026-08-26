@@ -21,6 +21,7 @@ const BLOCKED_COPY: Record<RoomInviteUnavailableReason, { title: string; message
   full: { title: "ROOM FULL", message: "This room has no open player slots." },
   in_progress: { title: "MATCH IN PROGRESS", message: "This match has already started." },
   expired: { title: "INVITE EXPIRED", message: "This match has finished and the room invite is no longer active." },
+  kicked: { title: "REMOVED FROM ROOM", message: "The room host removed you from this room." },
 };
 
 function difficultyPoolSummary(difficultyPool: QuestionDifficulty[]): string {
@@ -91,7 +92,7 @@ export function InviteJoinPage({ roomCode: rawRoomCode }: { roomCode: string }) 
       setPageState({ status: "invalid" });
       return;
     }
-    if (result.code === "full" || result.code === "in_progress" || result.code === "expired") {
+    if (result.code === "full" || result.code === "in_progress" || result.code === "expired" || result.code === "kicked") {
       setBlockedReason(result.code);
       return;
     }

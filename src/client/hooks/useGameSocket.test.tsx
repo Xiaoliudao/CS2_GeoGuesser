@@ -179,3 +179,24 @@ describe("useGameSocket intentional leave handshake", () => {
     await waitFor(() => expect(hook.result.current.leaveConfirmed).toBe(true));
   });
 });
+
+describe("useGameSocket kicked terminal state", () => {
+  it("stops reconnecting and reports a host kick instead of a network error", async () => {
+    const hook = await connectedHook();
+    const socket = FakeWebSocket.instances[0];
+
+    act(() => socket.serverMessage({
+      type: "room:kicked",
+      payload: { reason: "KICKED_BY_HOST" },
+    }));
+
+    await waitFor(() => expect(hook.result.current.kickedReason).toBe("KICKED_BY_HOST"));
+    expect(hook.result.current.connection).toBe("disconnected");
+    expect(hook.result.current.error).toBeNull();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    act(() => socket.serverClose(4004));
+    await Promise.resolve();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+});

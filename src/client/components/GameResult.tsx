@@ -29,12 +29,28 @@ export function GameResult({
       </section>
     );
   }
-  const sorted = [...room.players].sort((a, b) => integerDisplayScore(b.score) - integerDisplayScore(a.score)
+  if (room.failureCode === "NOT_ENOUGH_PLAYERS") {
+    return (
+      <section className="stage-card final-card">
+        <div className="stage-kicker">MATCH ENDED</div>
+        <h2>NOT ENOUGH PLAYERS</h2>
+        <p>Fewer than two active players remain, so this multiplayer match ended safely.</p>
+        <div className="final-actions">
+          <button className="secondary-button" onClick={onLeave} disabled={isLeaving}>
+            {isLeaving ? "LEAVING…" : "BACK TO HOME"}
+          </button>
+        </div>
+      </section>
+    );
+  }
+  const sorted = [...room.players].sort((a, b) => Number(b.active) - Number(a.active)
+    || integerDisplayScore(b.score) - integerDisplayScore(a.score)
     || a.slotIndex - b.slotIndex);
-  const topScore = sorted[0] ? integerDisplayScore(sorted[0].score) : null;
+  const activeRanked = sorted.filter((player) => player.active);
+  const topScore = activeRanked[0] ? integerDisplayScore(activeRanked[0].score) : null;
   const winners = topScore === null
     ? []
-    : sorted.filter((player) => integerDisplayScore(player.score) === topScore);
+    : activeRanked.filter((player) => integerDisplayScore(player.score) === topScore);
   const winnerIds = new Set(winners.map((player) => player.id));
   const tied = winners.length > 1;
   const viewerWon = winnerIds.has(playerId);

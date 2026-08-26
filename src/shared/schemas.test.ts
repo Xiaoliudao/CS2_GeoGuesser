@@ -92,4 +92,19 @@ describe("normalized point validation", () => {
       payload: { playerId: "8a831d4d-92ef-4db3-86c8-3ac42c988f27" },
     }).success).toBe(false);
   });
+
+  it("accepts only a bounded server-authorized kick request shape", () => {
+    expect(clientEventSchema.safeParse({
+      type: "player:kick",
+      payload: { targetPlayerId: "8a831d4d-92ef-4db3-86c8-3ac42c988f27" },
+    }).success).toBe(true);
+    expect(clientEventSchema.safeParse({
+      type: "player:kick",
+      payload: { targetPlayerId: "not-a-player", host: true },
+    }).success).toBe(false);
+    expect(clientEventSchema.safeParse({
+      type: "player:kick",
+      payload: { targetPlayerId: "8a831d4d-92ef-4db3-86c8-3ac42c988f27", extra: "unsafe" },
+    }).success).toBe(false);
+  });
 });

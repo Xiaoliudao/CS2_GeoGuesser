@@ -3,17 +3,22 @@ import { getMap } from "../../shared/maps";
 import { MIN_MULTIPLAYER_PLAYERS } from "../../shared/multiplayer";
 import { QUESTION_DIFFICULTIES, QUESTION_DIFFICULTY_LABELS } from "../../shared/questionDifficulty";
 import { InviteRoomButton } from "./InviteRoomButton";
+import { HostKickButton } from "./HostKickButton";
 
 export function Lobby({
   room,
   playerId,
   onReady,
   onStart,
+  onKick,
+  kickingPlayerId,
 }: {
   room: GameRoomState;
   playerId: string;
   onReady: () => void;
   onStart: () => void;
+  onKick?: (playerId: string) => void;
+  kickingPlayerId?: string | null;
 }) {
   const me = room.players.find((player) => player.id === playerId);
   const activePlayers = room.players
@@ -73,9 +78,21 @@ export function Lobby({
                 </div>
                 <span>{player.connected ? "ONLINE" : "RECONNECTING"}</span>
               </div>
-              <b className={player.ready ? "ready" : "not-ready"}>
-                {player.ready ? "READY ✓" : "NOT READY"}
-              </b>
+              <div className="lobby-player-actions">
+                <b className={player.ready ? "ready" : "not-ready"}>
+                  {player.ready ? "READY ✓" : "NOT READY"}
+                </b>
+                {onKick && (
+                  <HostKickButton
+                    viewerPlayerId={playerId}
+                    hostPlayerId={room.hostPlayerId}
+                    target={player}
+                    status={room.status}
+                    isKicking={kickingPlayerId === player.id}
+                    onKick={onKick}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="lobby-player empty" key={slot}>

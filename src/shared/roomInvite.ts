@@ -7,6 +7,7 @@ export const RoomInviteUnavailableReasonSchema = z.enum([
   "full",
   "in_progress",
   "expired",
+  "kicked",
 ]);
 
 const RoomInviteSettingsSchema = z.object({

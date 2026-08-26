@@ -3,8 +3,19 @@ import { LAYER_SCORE, MAP_SCORE, MAX_LOCATION_SCORE, MAX_TIME_BONUS } from "../.
 import type { GameRoomState } from "../../shared/types";
 import { formatScore } from "../lib/formatScore";
 import { RoundRadarResult } from "./RoundRadarResult";
+import { HostKickButton } from "./HostKickButton";
 
-export function RoundResult({ room, playerId }: { room: GameRoomState; playerId: string }) {
+export function RoundResult({
+  room,
+  playerId,
+  onKick,
+  kickingPlayerId,
+}: {
+  room: GameRoomState;
+  playerId: string;
+  onKick?: (targetPlayerId: string) => void;
+  kickingPlayerId?: string | null;
+}) {
   const result = room.roundResult;
   const question = room.currentQuestion;
   if (!result || !question) return null;
@@ -14,6 +25,7 @@ export function RoundResult({ room, playerId }: { room: GameRoomState; playerId:
       const roomPlayer = roomPlayers.get(player.playerId);
       return {
         player,
+        roomPlayer,
         slotIndex: roomPlayer?.slotIndex ?? fallbackIndex,
         active: roomPlayer?.active ?? true,
         totalScore: roomPlayer?.score ?? player.points,
@@ -33,7 +45,7 @@ export function RoundResult({ room, playerId }: { room: GameRoomState; playerId:
         <div className="result-question-image"><img src={question.imageUrl} alt="Round location screenshot" /></div>
       </div>
       <div className="round-result-leaderboard" aria-label="Round leaderboard">
-        {rankedPlayers.map(({ player, slotIndex, active, totalScore }, index) => {
+        {rankedPlayers.map(({ player, roomPlayer, slotIndex, active, totalScore }, index) => {
           const previous = index > 0 ? rankedPlayers[index - 1].player.points : null;
           const rank = previous === player.points
             ? rankedPlayers.findIndex((entry) => entry.player.points === player.points) + 1
@@ -48,6 +60,16 @@ export function RoundResult({ room, playerId }: { room: GameRoomState; playerId:
                 {!active ? "DNF · " : ""}MAP {player.mapCorrect ? "✓" : "×"} · LAYER {player.layerCorrect ? "✓" : "×"} · {distance}
               </span>
               <b><em>+{formatScore(player.points)}</em><small>TOTAL {formatScore(totalScore)}</small></b>
+              {roomPlayer && onKick && (
+                <HostKickButton
+                  viewerPlayerId={playerId}
+                  hostPlayerId={room.hostPlayerId}
+                  target={roomPlayer}
+                  status={room.status}
+                  isKicking={kickingPlayerId === player.playerId}
+                  onKick={onKick}
+                />
+              )}
             </div>
           );
         })}

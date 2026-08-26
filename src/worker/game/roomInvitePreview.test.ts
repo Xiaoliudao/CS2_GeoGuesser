@@ -76,4 +76,19 @@ describe("safe room invite preview", () => {
       reason: "not_found",
     });
   });
+
+  it("invalidates a kicked player's old room identity without exposing the kick list", () => {
+    const preview = roomInvitePreview({
+      ...base,
+      status: "waiting",
+      viewerPlayerId: "visitor",
+      kickedPlayerIds: ["visitor"],
+    });
+    expect(preview).toMatchObject({
+      joinable: false,
+      reconnectable: false,
+      reason: "kicked",
+    });
+    expect(JSON.stringify(preview)).not.toContain("kickedPlayerIds");
+  });
 });

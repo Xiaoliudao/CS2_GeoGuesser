@@ -49,6 +49,7 @@ import {
   toggledReadyState,
   validateGuess,
   validateMatchStart,
+  validatePlayerKick,
 } from "../game/roomState";
 import { normalizeScore, scoreGuess } from "../game/scoring";
 import { createPlayingRoundTiming, createPreparingRoundTiming } from "../game/roundTiming";
@@ -89,7 +90,7 @@ interface StoredGuess {
 }
 
 interface InternalRoomState extends RoundTiming {
-  schemaVersion: 9;
+  schemaVersion: 10;
   roomCode: string;
   status: RoomStatus;
   settings: RoomSettings;
@@ -98,6 +99,7 @@ interface InternalRoomState extends RoundTiming {
   maxPlayers: typeof MAX_MULTIPLAYER_PLAYERS;
   matchPlayerIds: string[];
   inactivePlayerIds: string[];
+  kickedPlayerIds: string[];
   round: number;
   questionCount: number;
   questionSnapshot: ServerQuestion[];
@@ -194,7 +196,7 @@ function migrateStoredState(stored: StoredRoomState): InternalRoomState {
     ? stored.hostPlayerId
     : null;
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     roomCode: stored.roomCode ?? "UNKNOWN",
     status,
     settings: roomSettingsFromStorage(stored.settings, stored.totalRounds),
@@ -203,6 +205,9 @@ function migrateStoredState(stored: StoredRoomState): InternalRoomState {
     maxPlayers: MAX_MULTIPLAYER_PLAYERS,
     matchPlayerIds,
     inactivePlayerIds: migratedInactivePlayerIds,
+    kickedPlayerIds: Array.from(new Set(
+      (stored.kickedPlayerIds ?? []).filter((playerId): playerId is string => typeof playerId === "string"),
+    )),
     round: stored.round ?? 0,
     questionCount: stored.questionCount ?? 0,
     questionSnapshot,
@@ -241,11 +246,12 @@ export class GameRoom extends DurableObject<Env> {
       if (stored) {
         this.state = migrateStoredState(stored);
         if (
-          stored.schemaVersion !== 9
+          stored.schemaVersion !== 10
           || stored.totalRounds !== undefined
           || stored.maxPlayers !== MAX_MULTIPLAYER_PLAYERS
           || !Array.isArray(stored.matchPlayerIds)
           || !Array.isArray(stored.inactivePlayerIds)
+          || !Array.isArray(stored.kickedPlayerIds)
           || !RoomSettingsSchema.safeParse(stored.settings).success
         ) {
           this.state.stateVersion += 1;
@@ -280,8 +286,11 @@ export class GameRoom extends DurableObject<Env> {
         roomCode: this.state.roomCode,
         status: this.state.status,
         settings: this.state.settings,
-        playerIds: this.state.players.map((player) => player.id),
+        playerIds: this.state.players
+          .filter((player) => !this.state?.kickedPlayerIds.includes(player.id))
+          .map((player) => player.id),
         viewerPlayerId,
+        kickedPlayerIds: this.state.kickedPlayerIds,
       }), { headers });
     }
 
@@ -379,7 +388,7 @@ export class GameRoom extends DurableObject<Env> {
 
     const now = Date.now();
     this.state = {
-      schemaVersion: 9,
+      schemaVersion: 10,
       roomCode: result.data,
       status: "waiting",
       settings: settings.data,
@@ -398,6 +407,7 @@ export class GameRoom extends DurableObject<Env> {
       maxPlayers: MAX_MULTIPLAYER_PLAYERS,
       matchPlayerIds: [],
       inactivePlayerIds: [],
+      kickedPlayerIds: [],
       round: 0,
       questionCount: body.questionCount,
       questionSnapshot: [],
@@ -459,6 +469,9 @@ export class GameRoom extends DurableObject<Env> {
       case "player:leave":
         await this.leave(socket, player);
         break;
+      case "player:kick":
+        await this.kick(socket, player, event.payload.targetPlayerId);
+        break;
       case "player:ready":
         await this.togglePlayerReady(player);
         break;
@@ -482,6 +495,15 @@ export class GameRoom extends DurableObject<Env> {
 
   private async join(socket: WebSocket, playerId: string, nickname: string): Promise<void> {
     if (!this.state) return;
+    if (this.state.kickedPlayerIds.includes(playerId)) {
+      this.send(socket, { type: "room:kicked", payload: { reason: "KICKED_BY_HOST" } });
+      try {
+        socket.close(4004, "Kicked by room host");
+      } catch {
+        // The client may close immediately after receiving the terminal event.
+      }
+      return;
+    }
     let player = this.state.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       if (this.state.status !== "waiting") {
@@ -582,6 +604,90 @@ export class GameRoom extends DurableObject<Env> {
         candidate.close(4001, "Intentional leave confirmed");
       } catch {
         // The client may close immediately after receiving the acknowledgement.
+      }
+    }
+  }
+
+  private async kick(socket: WebSocket, requester: InternalPlayer, targetPlayerId: string): Promise<void> {
+    if (!this.state) return;
+    const kickStatus = this.state.status;
+    this.logGameEvent("PLAYER_KICK_REQUEST", {
+      requestingPlayerId: requester.id,
+      targetPlayerId,
+      status: kickStatus,
+    });
+    const validationError = validatePlayerKick({
+      status: kickStatus,
+      requestingPlayerId: requester.id,
+      hostPlayerId: this.state.hostPlayerId,
+      players: this.state.players,
+      targetPlayerId,
+    });
+    if (validationError) {
+      this.sendError(socket, validationError, this.errorMessage(validationError));
+      return;
+    }
+
+    const target = this.state.players.find((player) => player.id === targetPlayerId);
+    if (!target) {
+      this.sendError(socket, "PLAYER_NOT_FOUND", this.errorMessage("PLAYER_NOT_FOUND"));
+      return;
+    }
+    const targetSockets = this.ctx.getWebSockets().filter(
+      (candidate) => this.getAttachment(candidate).playerId === targetPlayerId,
+    );
+    const previousState = structuredClone(this.state);
+    const targetWasConnected = target.connected;
+    const targetGuessEventId = this.state.guesses[targetPlayerId]?.eventId;
+
+    for (const candidate of targetSockets) {
+      candidate.serializeAttachment({ playerId: null, nickname: null } satisfies SocketAttachment);
+    }
+
+    try {
+      const departure = applyPlayerDeparture({
+        status: this.state.status,
+        players: this.state.players,
+        hostPlayerId: this.state.hostPlayerId,
+        inactivePlayerIds: this.state.inactivePlayerIds,
+        playerId: targetPlayerId,
+      });
+      this.state.players = departure.players;
+      this.state.hostPlayerId = departure.hostPlayerId;
+      this.state.inactivePlayerIds = departure.inactivePlayerIds;
+      this.state.kickedPlayerIds = Array.from(new Set([...this.state.kickedPlayerIds, targetPlayerId]));
+      delete this.state.assetReady[targetPlayerId];
+      delete this.state.guesses[targetPlayerId];
+      if (targetGuessEventId) {
+        this.state.processedEventIds = this.state.processedEventIds.filter(
+          (eventId) => eventId !== targetGuessEventId,
+        );
+      }
+      await this.reconcileAndCommit(Date.now(), true);
+    } catch (error) {
+      this.state = previousState;
+      for (const candidate of targetSockets) {
+        candidate.serializeAttachment({ playerId: targetPlayerId, nickname: target.nickname } satisfies SocketAttachment);
+      }
+      throw error;
+    }
+
+    this.logGameEvent("PLAYER_KICKED", {
+      requestingPlayerId: requester.id,
+      targetPlayerId,
+      status: kickStatus,
+      targetWasConnected,
+    });
+    const kickedEvent: ServerEvent = {
+      type: "room:kicked",
+      payload: { reason: "KICKED_BY_HOST" },
+    };
+    for (const candidate of targetSockets) {
+      this.send(candidate, kickedEvent);
+      try {
+        candidate.close(4004, "Kicked by room host");
+      } catch {
+        // The target may close immediately after receiving the terminal event.
       }
     }
   }
@@ -970,14 +1076,14 @@ export class GameRoom extends DurableObject<Env> {
     };
   }
 
-  private finishGame(): void {
+  private finishGame(failureCode: GameErrorCode | null = null): void {
     if (!this.state) return;
     this.state.status = "finished";
     this.state.prepareDeadline = null;
     this.state.roundStartedAt = null;
     this.state.roundEndsAt = null;
     this.state.resultEndsAt = null;
-    this.state.failureCode = null;
+    this.state.failureCode = failureCode;
   }
 
   private async reconcileAndCommit(now: number, stateAlreadyChanged = false): Promise<void> {
@@ -1009,7 +1115,7 @@ export class GameRoom extends DurableObject<Env> {
 
     const activePlayerIds = this.activeMatchPlayerIds();
     if (shouldFinishMatchAfterDeparture(this.state.status, activePlayerIds.length)) {
-      this.finishGame();
+      this.finishGame("NOT_ENOUGH_PLAYERS");
       changed = true;
     } else if (
       this.state.status === "round_preparing"
@@ -1259,7 +1365,11 @@ export class GameRoom extends DurableObject<Env> {
   private errorMessage(code: GameErrorCode): string {
     if (code === "ALREADY_SUBMITTED") return "You already submitted a guess for this round.";
     if (code === "ROUND_EXPIRED") return "This round has already ended.";
-    if (code === "NOT_HOST") return "Only the room host can start the match.";
+    if (code === "NOT_HOST") return "Only the room host can perform this action.";
+    if (code === "CANNOT_KICK_HOST") return "The room host cannot be kicked.";
+    if (code === "PLAYER_NOT_FOUND") return "That player is no longer active in this room.";
+    if (code === "KICK_NOT_ALLOWED") return "Players cannot be kicked after the match has finished.";
+    if (code === "KICKED_FROM_ROOM") return "You were removed from this room by the host.";
     if (code === "NOT_ENOUGH_PLAYERS") return "At least two active players are required to start.";
     if (code === "PLAYERS_NOT_READY") return "Every active player must be connected and ready before the match starts.";
     return code;

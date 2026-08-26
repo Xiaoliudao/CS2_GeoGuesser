@@ -15,6 +15,7 @@ import {
   toggledReadyState,
   validateGuess,
   validateMatchStart,
+  validatePlayerKick,
   type GuessValidationInput,
 } from "./roomState";
 
@@ -400,5 +401,42 @@ describe("authoritative player departure", () => {
     expect(shouldFinishMatchAfterDeparture("waiting", 1)).toBe(false);
     expect(shouldFinishMatchAfterDeparture("finished", 0)).toBe(false);
     expect(shouldFinishMatchAfterDeparture("finished", 1)).toBe(false);
+  });
+});
+
+describe("server-authoritative host kick validation", () => {
+  const players = [
+    { id: "host", active: true },
+    { id: "guest", active: true },
+    { id: "dnf", active: false },
+  ];
+
+  it.each(["waiting", "round_preparing", "playing", "round_result"] as const)(
+    "allows the current host to remove another active player during %s",
+    (status) => {
+      expect(validatePlayerKick({
+        status,
+        requestingPlayerId: "host",
+        hostPlayerId: "host",
+        players,
+        targetPlayerId: "guest",
+      })).toBeNull();
+    },
+  );
+
+  it("rejects non-host, self-target, inactive/missing target, and finished-room requests", () => {
+    const base = {
+      status: "playing" as const,
+      requestingPlayerId: "host",
+      hostPlayerId: "host",
+      players,
+      targetPlayerId: "guest",
+    };
+    expect(validatePlayerKick({ ...base, requestingPlayerId: "guest" })).toBe("NOT_HOST");
+    expect(validatePlayerKick({ ...base, targetPlayerId: "host" })).toBe("CANNOT_KICK_HOST");
+    expect(validatePlayerKick({ ...base, targetPlayerId: "dnf" })).toBe("PLAYER_NOT_FOUND");
+    expect(validatePlayerKick({ ...base, targetPlayerId: "missing" })).toBe("PLAYER_NOT_FOUND");
+    expect(validatePlayerKick({ ...base, status: "finished" })).toBe("KICK_NOT_ALLOWED");
+    expect(validatePlayerKick({ ...base, requestingPlayerId: "dnf" })).toBe("INVALID_PLAYER");
   });
 });

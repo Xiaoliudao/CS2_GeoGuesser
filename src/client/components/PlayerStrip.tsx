@@ -1,7 +1,22 @@
 import type { PublicPlayer } from "../../shared/types";
 import { formatScore, integerDisplayScore } from "../lib/formatScore";
+import { HostKickButton } from "./HostKickButton";
 
-export function PlayerStrip({ players, playerId }: { players: PublicPlayer[]; playerId: string }) {
+export function PlayerStrip({
+  players,
+  playerId,
+  hostPlayerId = null,
+  status = "playing",
+  onKick,
+  kickingPlayerId,
+}: {
+  players: PublicPlayer[];
+  playerId: string;
+  hostPlayerId?: string | null;
+  status?: "playing" | "round_preparing" | "round_result" | "waiting" | "finished";
+  onKick?: (targetPlayerId: string) => void;
+  kickingPlayerId?: string | null;
+}) {
   const rankedPlayers = [...players]
     .sort((left, right) => integerDisplayScore(right.score) - integerDisplayScore(left.score)
       || left.slotIndex - right.slotIndex);
@@ -27,6 +42,16 @@ export function PlayerStrip({ players, playerId }: { players: PublicPlayer[]; pl
           <span className={!player.active ? "dnf" : player.submitted ? "submitted" : "thinking"}>
             {!player.active ? "DNF" : player.submitted ? "SUBMITTED ✓" : "THINKING…"}
           </span>
+          {onKick && (
+            <HostKickButton
+              viewerPlayerId={playerId}
+              hostPlayerId={hostPlayerId}
+              target={player}
+              status={status}
+              isKicking={kickingPlayerId === player.id}
+              onKick={onKick}
+            />
+          )}
         </div>
         );
       })}

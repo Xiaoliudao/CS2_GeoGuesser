@@ -121,6 +121,22 @@ describe("Lobby ready toggle", () => {
     expect(screen.getByText(/WAITING FOR THE HOST TO START/)).toBeTruthy();
   });
 
+  it("shows kick controls only to the host and never allows targeting the host", async () => {
+    const user = userEvent.setup();
+    const room = waitingRoom(true);
+    const onKick = vi.fn();
+    const { rerender } = render(
+      <Lobby room={room} playerId="player-a" onReady={vi.fn()} onStart={vi.fn()} onKick={onKick} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Kick Alpha" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Kick Bravo" }));
+    expect(onKick).toHaveBeenCalledWith("player-b");
+
+    rerender(<Lobby room={room} playerId="player-b" onReady={vi.fn()} onStart={vi.fn()} onKick={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Kick / })).toBeNull();
+  });
+
   it("keeps start disabled until at least two connected active players are ready", () => {
     const room = waitingRoom(true);
     room.players[1].active = false;

@@ -1,5 +1,6 @@
 import type { GameRoomState } from "../../shared/types";
 import type { RoundAssetLoadState } from "../hooks/useRoundPreparation";
+import { HostKickButton } from "./HostKickButton";
 
 function readinessLabel(ready: boolean, loadingLabel = "LOADING"): string {
   return ready ? "READY ✓" : loadingLabel;
@@ -11,12 +12,16 @@ export function RoundPreparation({
   loadState,
   errorReason,
   onRetry,
+  onKick,
+  kickingPlayerId,
 }: {
   room: GameRoomState;
   playerId: string;
   loadState: RoundAssetLoadState;
   errorReason: string | null;
   onRetry: () => void;
+  onKick?: (targetPlayerId: string) => void;
+  kickingPlayerId?: string | null;
 }) {
   const me = room.players.find((player) => player.id === playerId);
   const ownReady = Boolean(me?.assetReady) || loadState === "ready";
@@ -54,7 +59,19 @@ export function RoundPreparation({
                 {isMe && <small>YOU</small>}
                 {player.id === room.hostPlayerId && <small>HOST</small>}
               </span>
-              <strong className={ready ? "is-ready" : localError ? "is-error" : ""}>{label}</strong>
+              <div className="prepare-player-actions">
+                <strong className={ready ? "is-ready" : localError ? "is-error" : ""}>{label}</strong>
+                {onKick && (
+                  <HostKickButton
+                    viewerPlayerId={playerId}
+                    hostPlayerId={room.hostPlayerId}
+                    target={player}
+                    status={room.status}
+                    isKicking={kickingPlayerId === player.id}
+                    onKick={onKick}
+                  />
+                )}
+              </div>
             </div>
           );
         })}

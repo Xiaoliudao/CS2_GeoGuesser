@@ -11,6 +11,7 @@ class TestClient {
     this.roundStarts = [];
     this.lastPong = null;
     this.leftAcknowledgements = [];
+    this.kickedEvents = [];
   }
 
   async connect({ waitForJoin = true } = {}) {
@@ -21,6 +22,7 @@ class TestClient {
       if (event.type === "round:start") this.roundStarts.push(event.payload);
       if (event.type === "pong") this.lastPong = event.payload;
       if (event.type === "player:left") this.leftAcknowledgements.push(event.payload);
+      if (event.type === "room:kicked") this.kickedEvents.push(event.payload);
       if (event.type === "error") this.lastError = event.payload;
     });
     await new Promise((resolve, reject) => {
@@ -86,6 +88,16 @@ class TestClient {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`${this.name} timed out waiting for player:left acknowledgement`);
+  }
+
+  async waitForKicked(timeoutMs = 8_000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const event = this.kickedEvents.find((candidate) => candidate.reason === "KICKED_BY_HOST");
+      if (event) return event;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`${this.name} timed out waiting for room:kicked`);
   }
 
   send(event) {
@@ -257,6 +269,118 @@ try {
 } finally {
   capacityHost.close();
   for (const client of [...capacityGuests, ...slotFiveContenders]) client.close();
+}
+
+const kickHostId = crypto.randomUUID();
+const kickCreateResponse = await fetch(`${baseUrl}/api/rooms`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    settings: requestedSettings,
+    creator: { playerId: kickHostId, nickname: "Kick Host" },
+  }),
+});
+assert(kickCreateResponse.status === 201, `Expected kick room creation 201, got ${kickCreateResponse.status}`);
+const { roomCode: kickRoomCode } = await kickCreateResponse.json();
+const kickHost = new TestClient("Kick Host", kickHostId, kickRoomCode);
+const kickGuests = Array.from({ length: 4 }, (_, index) => (
+  new TestClient(`Kick Guest ${index + 2}`, crypto.randomUUID(), kickRoomCode)
+));
+let kickedReconnect = null;
+try {
+  await Promise.all([kickHost.connect(), ...kickGuests.map((client) => client.connect())]);
+  await kickHost.waitFor((state) => state.status === "waiting" && state.players.length === 5);
+
+  kickGuests[0].send({ type: "player:kick", payload: { targetPlayerId: kickGuests[1].playerId } });
+  await kickGuests[0].waitForError("NOT_HOST");
+  assert(kickHost.lastState.players.length === 5, "A non-host kick request changed room membership");
+  kickHost.send({ type: "player:kick", payload: { targetPlayerId: kickHost.playerId } });
+  await kickHost.waitForError("CANNOT_KICK_HOST");
+  assert(kickHost.lastState.hostPlayerId === kickHost.playerId, "The authoritative host was self-kicked");
+
+  for (const client of [kickHost, ...kickGuests]) client.send({ type: "player:ready" });
+  await kickHost.waitFor((state) => state.players.length === 5 && state.players.every((player) => player.ready));
+  kickHost.send({ type: "game:start" });
+  const kickPreparing = await kickHost.waitFor(
+    (state) => state.status === "round_preparing" && state.round === 1,
+  );
+  const firstKickTarget = kickGuests[3];
+  const preparingSurvivors = [kickHost, kickGuests[0], kickGuests[1], kickGuests[2]];
+  for (const client of preparingSurvivors) {
+    client.send({
+      type: "round:asset-ready",
+      payload: {
+        round: 1,
+        questionId: kickPreparing.currentQuestion.questionId,
+        loadMs: 100,
+      },
+    });
+  }
+  await kickHost.waitFor((state) => (
+    state.status === "round_preparing"
+      && preparingSurvivors.every((client) => state.players.find((player) => player.id === client.playerId)?.assetReady)
+  ));
+  kickHost.send({ type: "player:kick", payload: { targetPlayerId: firstKickTarget.playerId } });
+  await firstKickTarget.waitForKicked();
+  const kickPlaying = await kickHost.waitFor((state) => (
+    state.status === "playing"
+      && state.round === 1
+      && state.players.find((player) => player.id === firstKickTarget.playerId)?.active === false
+  ));
+  assert(kickPlaying.currentQuestion.questionId === kickPreparing.currentQuestion.questionId, "Preparing-phase kick changed the current question");
+  assert(kickPlaying.players.filter((player) => player.active).length === 4, "Preparing-phase kick left the wrong active player count");
+  assert(kickHost.roundStarts.filter((payload) => payload.round === 1).length === 1, "Preparing-phase kick restarted the round timer");
+
+  const kickedPreviewResponse = await fetch(`${baseUrl}/api/rooms/${kickRoomCode}/preview`, {
+    headers: { "x-cs2-player-id": firstKickTarget.playerId },
+  });
+  const kickedPreview = await kickedPreviewResponse.json();
+  assert(
+    kickedPreview.joinable === false && kickedPreview.reconnectable === false && kickedPreview.reason === "kicked",
+    "Kicked identity remained reconnectable in the invite preview",
+  );
+  kickedReconnect = new TestClient("Kick Guest Reconnect", firstKickTarget.playerId, kickRoomCode);
+  await kickedReconnect.connect({ waitForJoin: false });
+  await kickedReconnect.waitForKicked();
+  assert(kickedReconnect.lastState === null, "A kicked identity silently restored room state");
+
+  const playingKickTarget = kickGuests[2];
+  const submitters = [kickHost, kickGuests[0], kickGuests[1]];
+  for (const [index, client] of submitters.entries()) {
+    client.send({
+      type: "guess:submit",
+      payload: {
+        round: 1,
+        eventId: crypto.randomUUID(),
+        mapId: guessMapId,
+        layerId: guessLayerId,
+        point: { x: 0.25 + index * 0.1, y: 0.35 + index * 0.1 },
+      },
+    });
+  }
+  await kickHost.waitFor((state) => (
+    state.status === "playing"
+      && submitters.every((client) => state.players.find((player) => player.id === client.playerId)?.submitted)
+  ));
+  const playingDeadlineBeforeKick = kickHost.lastState.roundEndsAt;
+  kickHost.send({ type: "player:kick", payload: { targetPlayerId: playingKickTarget.playerId } });
+  await playingKickTarget.waitForKicked();
+  const kickedRoundResult = await kickHost.waitFor((state) => (
+    state.status === "round_result"
+      && state.round === 1
+      && state.players.find((player) => player.id === playingKickTarget.playerId)?.active === false
+  ));
+  assert(kickedRoundResult.currentQuestion.questionId === kickPlaying.currentQuestion.questionId, "Playing-phase kick changed the current question");
+  assert(Number.isFinite(playingDeadlineBeforeKick), "Playing-phase kick test had no authoritative deadline");
+  assert(kickHost.roundStarts.filter((payload) => payload.round === 1).length === 1, "Playing-phase kick restarted the timer");
+  assert(
+    kickedRoundResult.roundResult.players.filter((player) => submitters.some((client) => client.playerId === player.playerId)).every((player) => player.submitted),
+    "Playing-phase kick did not finish after every remaining player had submitted",
+  );
+} finally {
+  kickHost.close();
+  for (const client of kickGuests) client.close();
+  kickedReconnect?.close();
 }
 
 const alphaPlayerId = crypto.randomUUID();
@@ -496,6 +620,10 @@ try {
     activeLeavePreservedQuestion: true,
     twoSurvivorsContinued: true,
     oneSurvivorFinishedCleanly: true,
+    hostKickAuthorityVerified: true,
+    kickedReconnectInvalidated: true,
+    preparingKickBarrierReevaluated: true,
+    playingKickBarrierReevaluated: true,
   }, null, 2));
   }
 } finally {

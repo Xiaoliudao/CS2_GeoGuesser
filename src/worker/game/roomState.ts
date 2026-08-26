@@ -80,6 +80,34 @@ export function validateMatchStart({
   return null;
 }
 
+export interface KickablePlayerState {
+  id: string;
+  active: boolean;
+}
+
+export function validatePlayerKick({
+  status,
+  requestingPlayerId,
+  hostPlayerId,
+  players,
+  targetPlayerId,
+}: {
+  status: RoomStatus;
+  requestingPlayerId: string;
+  hostPlayerId: string | null;
+  players: readonly KickablePlayerState[];
+  targetPlayerId: string;
+}): GameErrorCode | null {
+  const requester = players.find((player) => player.id === requestingPlayerId);
+  if (!requester?.active) return "INVALID_PLAYER";
+  if (requestingPlayerId !== hostPlayerId) return "NOT_HOST";
+  if (targetPlayerId === hostPlayerId) return "CANNOT_KICK_HOST";
+  if (status === "finished") return "KICK_NOT_ALLOWED";
+  const target = players.find((player) => player.id === targetPlayerId);
+  if (!target?.active) return "PLAYER_NOT_FOUND";
+  return null;
+}
+
 export function lowestAvailableSlotIndex(
   players: readonly { slotIndex: number }[],
   maxPlayers = MAX_MULTIPLAYER_PLAYERS,

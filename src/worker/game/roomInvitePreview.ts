@@ -19,19 +19,24 @@ export function roomInvitePreview({
   settings,
   playerIds,
   viewerPlayerId,
+  kickedPlayerIds = [],
 }: {
   roomCode: string;
   status: RoomStatus;
   settings: RoomSettings;
   playerIds: string[];
   viewerPlayerId: string | null;
+  kickedPlayerIds?: string[];
 }): RoomInvitePreview {
+  const viewerWasKicked = viewerPlayerId !== null && kickedPlayerIds.includes(viewerPlayerId);
   const reconnectable = viewerPlayerId !== null && playerIds.includes(viewerPlayerId);
   const playerCount = Math.min(playerIds.length, MAX_MULTIPLAYER_PLAYERS);
   let joinable = false;
-  let reason: "full" | "in_progress" | "expired" | null = null;
+  let reason: "full" | "in_progress" | "expired" | "kicked" | null = null;
 
-  if (status === "waiting") {
+  if (viewerWasKicked) {
+    reason = "kicked";
+  } else if (status === "waiting") {
     joinable = reconnectable || playerCount < MAX_MULTIPLAYER_PLAYERS;
     reason = joinable ? null : "full";
   } else if (status === "finished") {

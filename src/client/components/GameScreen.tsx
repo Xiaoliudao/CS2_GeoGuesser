@@ -12,12 +12,16 @@ export function GameScreen({
   serverClockOffsetMs,
   clockSynchronized,
   onSend,
+  onKick,
+  kickingPlayerId,
 }: {
   room: GameRoomState;
   playerId: string;
   serverClockOffsetMs: number;
   clockSynchronized: boolean;
   onSend: (event: ClientEvent) => boolean;
+  onKick?: (targetPlayerId: string) => void;
+  kickingPlayerId?: string | null;
 }) {
   const [imageLoaded, setImageLoaded] = useState(() => room.currentQuestion ? isImagePreloaded(room.currentQuestion.imageUrl) : false);
   const remainingMs = useAuthoritativeCountdown({
@@ -71,7 +75,16 @@ export function GameScreen({
         </div>
       </section>
 
-      <div className="game-score-row"><PlayerStrip players={room.players} playerId={playerId} /></div>
+      <div className="game-score-row">
+        <PlayerStrip
+          players={room.players}
+          playerId={playerId}
+          hostPlayerId={room.hostPlayerId}
+          status={room.status}
+          onKick={onKick}
+          kickingPlayerId={kickingPlayerId}
+        />
+      </div>
     </section>
   );
 }

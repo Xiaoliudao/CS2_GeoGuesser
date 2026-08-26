@@ -66,6 +66,7 @@ function mockSocket(room: GameRoomState) {
     send,
     leaveRoom,
     leaveConfirmed: false,
+    kickedReason: null,
   });
   vi.mocked(useRoundPreparation).mockReturnValue({
     loadState: "idle",
@@ -103,6 +104,55 @@ describe("RoomPage multiplayer lobby wiring", () => {
     render(<RoomPage roomCode="ABCDE" />);
 
     expect(screen.queryByRole("button", { name: /INVITE|SHARE INVITE|COPY INVITE/ })).toBeNull();
+  });
+
+  it("asks for confirmation and sends one player:kick request for the selected target", async () => {
+    mockSocket(waitingRoom(3));
+    render(<RoomPage roomCode="ABCDE" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Kick Player 2" }));
+    const dialog = screen.getByRole("dialog", { name: "KICK PLAYER?" });
+    expect(dialog.textContent).toContain("Remove Player 2 from this room?");
+    await userEvent.dblClick(within(dialog).getByRole("button", { name: "KICK PLAYER" }));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith({
+      type: "player:kick",
+      payload: { targetPlayerId: "player-1" },
+    });
+    expect(within(dialog).getByRole("button", { name: "KICKING…" })).toBeTruthy();
+  });
+
+  it("shows disconnected-target copy in the custom kick dialog", async () => {
+    const room = waitingRoom(2);
+    room.players[1].connected = false;
+    mockSocket(room);
+    render(<RoomPage roomCode="ABCDE" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Kick Player 2" }));
+    expect(screen.getByRole("dialog", { name: "KICK PLAYER?" }).textContent).toContain("currently disconnected");
+  });
+
+  it("renders an explicit kicked state instead of a reconnect error", () => {
+    vi.mocked(useGameSocket).mockReturnValue({
+      room: null,
+      connection: "disconnected",
+      rttMs: null,
+      serverClockOffsetMs: 0,
+      clockSynchronized: false,
+      error: null,
+      clearError: vi.fn(),
+      send,
+      leaveRoom,
+      leaveConfirmed: false,
+      kickedReason: "KICKED_BY_HOST",
+    });
+    vi.mocked(useRoundPreparation).mockReturnValue({ loadState: "idle", errorReason: null, retry: vi.fn() });
+    render(<RoomPage roomCode="ABCDE" />);
+
+    expect(screen.getByText("YOU WERE REMOVED")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "BACK TO HOME" })).toBeTruthy();
+    expect(screen.queryByText("JOINING ROOM")).toBeNull();
   });
 
   it("keeps an inactive returning player read-only while the match is in progress", () => {

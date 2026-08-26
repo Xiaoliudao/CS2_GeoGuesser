@@ -20,6 +20,7 @@ const ERROR_MESSAGES: Record<JoinRoomErrorCode, string> = {
   full: "This room is full.",
   in_progress: "This match has already started.",
   expired: "This room has finished and the invite has expired.",
+  kicked: "You were removed from this room by the host.",
   unavailable: "Could not reach the game server. Please try again.",
 };
 

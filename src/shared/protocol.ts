@@ -4,6 +4,7 @@ import type { GameErrorCode, GameRoomState, MapPoint, PublicPlayer, RoundResultS
 export const CLIENT_EVENTS = {
   JOIN: "player:join",
   LEAVE: "player:leave",
+  KICK: "player:kick",
   READY: "player:ready",
   START_MATCH: "game:start",
   GUESS_SUBMIT: "guess:submit",
@@ -18,6 +19,7 @@ export const SERVER_EVENTS = {
   ROOM_STATE: "room:state",
   PLAYER_JOINED: "player:joined",
   PLAYER_LEFT: "player:left",
+  ROOM_KICKED: "room:kicked",
   PLAYER_CONNECTION: "player:connection",
   ROUND_PREPARE: "round:prepare",
   ROUND_START: "round:start",
@@ -34,6 +36,7 @@ export type AssetLoadErrorReason = (typeof ASSET_LOAD_ERROR_REASONS)[number];
 export type ClientEvent =
   | { type: "player:join"; payload: { playerId: string; nickname: string } }
   | { type: "player:leave" }
+  | { type: "player:kick"; payload: { targetPlayerId: string } }
   | { type: "player:ready" }
   | { type: "game:start" }
   | {
@@ -56,6 +59,7 @@ export type ServerEvent =
   | { type: "room:state"; payload: GameRoomState }
   | { type: "player:joined"; payload: { player: PublicPlayer; stateVersion: number } }
   | { type: "player:left"; payload: { playerId: string; stateVersion: number } }
+  | { type: "room:kicked"; payload: { reason: "KICKED_BY_HOST" } }
   | {
       type: "player:connection";
       payload: { playerId: string; connected: boolean; stateVersion: number };

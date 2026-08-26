@@ -18,6 +18,10 @@ export const clientEventSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({ type: z.literal(CLIENT_EVENTS.LEAVE) }).strict(),
+  z.object({
+    type: z.literal(CLIENT_EVENTS.KICK),
+    payload: z.object({ targetPlayerId: playerIdSchema }).strict(),
+  }).strict(),
   z.object({ type: z.literal(CLIENT_EVENTS.READY) }),
   z.object({ type: z.literal(CLIENT_EVENTS.START_MATCH) }).strict(),
   z.object({

@@ -82,4 +82,26 @@ describe("GameResult multiplayer ranking", () => {
     expect(screen.getByRole("button", { name: "LEAVE MATCH" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "BACK TO HOME" })).toBeNull();
   });
+
+  it("excludes an inactive high scorer from winner selection", () => {
+    const room = finishedRoom([250, 200, 999]);
+    room.players[2].active = false;
+    render(<GameResult room={room} playerId="player-0" onPlayAgain={vi.fn()} onLeave={vi.fn()} />);
+
+    expect(screen.getByText("VICTORY")).toBeTruthy();
+    expect(document.querySelector(".final-scores > .winner strong")?.textContent).toContain("Player 1");
+    expect(document.querySelector(".final-scores > .is-dnf")?.classList.contains("winner")).toBe(false);
+  });
+
+  it("shows a clean multiplayer-only ending when fewer than two active players remain", () => {
+    const room = finishedRoom([250, 200]);
+    room.failureCode = "NOT_ENOUGH_PLAYERS";
+    room.players[1].active = false;
+    render(<GameResult room={room} playerId="player-0" onPlayAgain={vi.fn()} onLeave={vi.fn()} />);
+
+    expect(screen.getByText("MATCH ENDED")).toBeTruthy();
+    expect(screen.getByText("NOT ENOUGH PLAYERS")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "PLAY AGAIN" })).toBeNull();
+    expect(screen.getByRole("button", { name: "BACK TO HOME" })).toBeTruthy();
+  });
 });

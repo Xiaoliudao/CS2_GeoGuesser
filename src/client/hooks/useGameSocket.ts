@@ -24,6 +24,7 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
   const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
   const [clockSynchronized, setClockSynchronized] = useState(false);
   const [error, setError] = useState<SocketError | null>(null);
+  const [kickedReason, setKickedReason] = useState<"KICKED_BY_HOST" | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const roomRef = useRef<GameRoomState | null>(null);
   const clockEstimatorRef = useRef(new ServerClockEstimator());
@@ -34,6 +35,7 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
   const pendingLeaveRef = useRef<PendingLeave | null>(null);
   const leaveIntentRef = useRef(false);
   const leaveConfirmedRef = useRef(false);
+  const kickedRef = useRef(false);
   const [leaveConfirmed, setLeaveConfirmed] = useState(false);
 
   const send = useCallback((event: ClientEvent): boolean => {
@@ -95,7 +97,9 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
     stoppedRef.current = false;
     leaveIntentRef.current = false;
     leaveConfirmedRef.current = false;
+    kickedRef.current = false;
     setLeaveConfirmed(false);
+    setKickedReason(null);
     stateVersionRef.current = 0;
     reconnectAttemptRef.current = 0;
     roomRef.current = null;
@@ -135,6 +139,30 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
       setLeaveConfirmed(true);
       if (socket && socket.readyState < WebSocket.CLOSING) {
         socket.close(1000, "Intentional leave confirmed");
+      }
+    };
+
+    const confirmKicked = (socket?: WebSocket) => {
+      if (kickedRef.current) return;
+      kickedRef.current = true;
+      stoppedRef.current = true;
+      leaveIntentRef.current = false;
+      if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      const pending = pendingLeaveRef.current;
+      if (pending) {
+        window.clearTimeout(pending.timeoutId);
+        pendingLeaveRef.current = null;
+        pending.reject(new Error("The room host removed you before the leave request completed."));
+      }
+      roomRef.current = null;
+      setRoom(null);
+      setError(null);
+      setConnection("disconnected");
+      setRttMs(null);
+      setKickedReason("KICKED_BY_HOST");
+      if (socket && socket.readyState < WebSocket.CLOSING) {
+        socket.close(1000, "Kicked by room host");
       }
     };
 
@@ -243,6 +271,10 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
           }
           return;
         }
+        if (event.type === "room:kicked") {
+          confirmKicked(socket);
+          return;
+        }
         if (event.type === "player:left" && event.payload.playerId === playerId) {
           confirmIntentionalLeave(socket);
           return;
@@ -283,6 +315,10 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
         if (socketRef.current === socket) socketRef.current = null;
         if (closeEvent.code === 4001) {
           confirmIntentionalLeave();
+          return;
+        }
+        if (closeEvent.code === 4004) {
+          confirmKicked();
           return;
         }
         if (stoppedRef.current) return;
@@ -332,5 +368,6 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
     send,
     leaveRoom,
     leaveConfirmed,
+    kickedReason,
   };
 }
