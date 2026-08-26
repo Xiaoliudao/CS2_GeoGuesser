@@ -8,16 +8,20 @@ import {
   QUESTION_GAME_WEBP_QUALITY,
 } from "../../src/content/imageOptimization.ts";
 import {
+  getEffectiveQuestionDifficulty,
   getFinalQuestionPoint,
   getPreviewQuestionStatus,
+  updateQuestionDifficultyOverrides,
   updateQuestionOverrides,
   type PreviewQuestion,
   type QaPreviewQuestion,
+  type QuestionDifficultyOverrideMap,
   type QuestionOverrideMap,
   type QuestionPreviewManifest,
 } from "../../src/content/questionPreview.ts";
 import type { MapId } from "../../src/shared/maps.ts";
 import type { MapPoint } from "../../src/shared/types.ts";
+import { QuestionDifficultySchema, type QuestionDifficulty } from "../../src/shared/questionDifficulty.ts";
 import { hasUsableQuestionImageDimensions } from "../../src/content/questionInbox.ts";
 import type { ManifestQuestion } from "./question-manifest.ts";
 import {
@@ -60,6 +64,7 @@ export const projectRoot = resolve(import.meta.dirname, "..", "..");
 export const generatedRoot = join(projectRoot, "content", "generated");
 export const previewManifestPath = join(generatedRoot, "question-preview.json");
 export const overridesPath = join(generatedRoot, "question-overrides.json");
+export const difficultyOverridesPath = join(generatedRoot, "question-difficulty-overrides.json");
 export const pendingPath = join(generatedRoot, "pending-questions.json");
 export const preparedQuestionsRoot = join(generatedRoot, "prepared-questions");
 export const inboxRoot = join(projectRoot, "content", "inbox");
@@ -129,8 +134,29 @@ function overrideEntryFor(
   return null;
 }
 
+function difficultyEntryFor(
+  preview: PreviewQuestion,
+  previews: readonly PreviewQuestion[],
+  overrides: QuestionDifficultyOverrideMap,
+): { key: string; difficulty: QuestionDifficulty } | null {
+  for (const key of previewIdentityAliases(preview, previews)) {
+    const difficulty = overrides[key];
+    if (difficulty) return { key, difficulty };
+  }
+  return null;
+}
+
 export function loadQuestionOverrides(): QuestionOverrideMap {
   return readJson<QuestionOverrideMap>(overridesPath, {});
+}
+
+export function loadQuestionDifficultyOverrides(): QuestionDifficultyOverrideMap {
+  const raw = readJson<Record<string, unknown>>(difficultyOverridesPath, {});
+  return Object.fromEntries(Object.entries(raw).map(([previewId, difficulty]) => {
+    const parsed = QuestionDifficultySchema.safeParse(difficulty);
+    if (!parsed.success) throw new Error(`INVALID_DIFFICULTY_OVERRIDE ${previewId}`);
+    return [previewId, parsed.data];
+  }));
 }
 
 export function loadPendingQuestions(): PendingQuestion[] {
@@ -145,14 +171,18 @@ function qaQuestionFor(
   preview: PreviewQuestion,
   previews: readonly PreviewQuestion[],
   overrides: QuestionOverrideMap,
+  difficultyOverrides: QuestionDifficultyOverrideMap,
   pendingQuestions: readonly PendingQuestion[],
   records: readonly ImportRecord[],
 ): QaPreviewQuestion {
   const override = overrideEntryFor(preview, previews, overrides)?.point;
+  const difficultyOverride = difficultyEntryFor(preview, previews, difficultyOverrides)?.difficulty;
+  const difficulty = getEffectiveQuestionDifficulty(preview, difficultyOverride);
   const pending = pendingQuestions.some((item) => pendingMatchesPreview(item, preview, previews));
   const published = records.some((item) => recordMatchesPreview(item, preview, previews));
   return {
     ...preview,
+    ...(difficulty ? { difficulty } : {}),
     ...(override ? { manualOverride: override } : {}),
     finalPoint: getFinalQuestionPoint({ automaticPoint: preview.automaticPoint, manualOverride: override }),
     status: getPreviewQuestionStatus({ hasOverride: Boolean(override), isPending: pending, isPublished: published }),
@@ -162,9 +192,10 @@ function qaQuestionFor(
 export function listQaPreviewQuestions(): QaPreviewQuestion[] {
   const previews = loadPreviewManifest().questions;
   const overrides = loadQuestionOverrides();
+  const difficultyOverrides = loadQuestionDifficultyOverrides();
   const pending = loadPendingQuestions();
   const records = loadImportRecords();
-  return previews.map((preview) => qaQuestionFor(preview, previews, overrides, pending, records));
+  return previews.map((preview) => qaQuestionFor(preview, previews, overrides, difficultyOverrides, pending, records));
 }
 
 function requirePreview(previewId: string): PreviewQuestion {
@@ -192,6 +223,20 @@ function updatePendingPoint(preview: PreviewQuestion, manualOverride?: MapPoint)
   writeJson(pendingPath, pending);
 }
 
+function updatePendingDifficulty(preview: PreviewQuestion, difficulty?: QuestionDifficulty): void {
+  const previews = loadPreviewManifest().questions;
+  const pending = loadPendingQuestions();
+  const index = pending.findIndex((item) => pendingMatchesPreview(item, preview, previews));
+  if (index < 0) return;
+  const item = pending[index];
+  if (difficulty) item.question = { ...item.question, difficulty };
+  else {
+    const { difficulty: _removed, ...question } = item.question;
+    item.question = question as ManifestQuestion;
+  }
+  writeJson(pendingPath, pending);
+}
+
 export function saveQuestionOverride(previewId: string, point: MapPoint | null): QaPreviewQuestion {
   const preview = requirePreview(previewId);
   const previews = loadPreviewManifest().questions;
@@ -208,7 +253,47 @@ export function saveQuestionOverride(previewId: string, point: MapPoint | null):
     updatePendingPoint(preview, point);
   }
   writeJson(overridesPath, overrides);
-  return qaQuestionFor(preview, previews, overrides, loadPendingQuestions(), loadImportRecords());
+  return qaQuestionFor(
+    preview,
+    previews,
+    overrides,
+    loadQuestionDifficultyOverrides(),
+    loadPendingQuestions(),
+    loadImportRecords(),
+  );
+}
+
+export function saveQuestionDifficulty(
+  previewId: string,
+  rawDifficulty: QuestionDifficulty | null,
+): QaPreviewQuestion {
+  const preview = requirePreview(previewId);
+  const previews = loadPreviewManifest().questions;
+  if (loadImportRecords().some((item) => recordMatchesPreview(item, preview, previews))) {
+    throw new Error("PUBLISHED_QUESTION_IS_IMMUTABLE");
+  }
+  const difficulty = rawDifficulty === null ? null : QuestionDifficultySchema.parse(rawDifficulty);
+  let overrides = loadQuestionDifficultyOverrides();
+  const overrideKey = difficultyEntryFor(preview, previews, overrides)?.key ?? preview.previewId;
+  overrides = updateQuestionDifficultyOverrides(overrides, overrideKey, difficulty);
+  writeJson(difficultyOverridesPath, overrides);
+  const effectiveDifficulty = getEffectiveQuestionDifficulty(preview, difficulty);
+  updatePendingDifficulty(preview, effectiveDifficulty);
+  return qaQuestionFor(
+    preview,
+    previews,
+    loadQuestionOverrides(),
+    overrides,
+    loadPendingQuestions(),
+    loadImportRecords(),
+  );
+}
+
+export function requireQuestionDifficultyForPublish(value: unknown): QuestionDifficulty {
+  if (value === undefined || value === null || value === "") throw new Error("SELECT_A_DIFFICULTY");
+  const parsed = QuestionDifficultySchema.safeParse(value);
+  if (!parsed.success) throw new Error("INVALID_DIFFICULTY");
+  return parsed.data;
 }
 
 export function hasCloudflareAuth(): boolean {
@@ -261,6 +346,10 @@ export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePat
   const hash = sourceHash(resolvedSourcePath);
   if (hash !== preview.sourceImageSha256) throw new Error("PREVIEW_SOURCE_CHANGED_RERUN_DRY_RUN");
   const previews = loadPreviewManifest().questions;
+  const difficulty = requireQuestionDifficultyForPublish(getEffectiveQuestionDifficulty(
+    preview,
+    difficultyEntryFor(preview, previews, loadQuestionDifficultyOverrides())?.difficulty,
+  ));
   const pending = loadPendingQuestions();
   const existing = pending.find((item) => pendingMatchesPreview(item, preview, previews));
   const imageAssetId = existing?.question.imageAssetId ?? randomUUID().replaceAll("-", "");
@@ -286,6 +375,7 @@ export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePat
       imageAssetId,
       correctMapId: preview.mapId,
       correctLayerId: preview.layerId,
+      difficulty,
       correctPoint: getFinalQuestionPoint({ automaticPoint: preview.automaticPoint, manualOverride }),
       automaticPoint: preview.automaticPoint,
       worldPosition: preview.worldPosition,
@@ -301,6 +391,7 @@ export async function preparePreviewQuestion(preview: PreviewQuestion, sourcePat
 }
 
 export function publishPreparedQuestion(entry: PendingQuestion): PublishResult {
+  requireQuestionDifficultyForPublish(entry.question.difficulty);
   if (!hasCloudflareAuth()) {
     return { status: "publish-pending", questionId: entry.question.id, message: "PUBLISH_PENDING_R2. Run npx wrangler login, then npm run questions:publish-pending." };
   }

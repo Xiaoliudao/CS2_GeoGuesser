@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-import { listQaPreviewQuestions, publishPreviewQuestion, saveQuestionOverride } from "./question-workflow.ts";
-import { listRemoteQuestions, setRemoteQuestionEnabled, updateRemoteQuestionPoint } from "./question-d1-admin.ts";
+import { listQaPreviewQuestions, publishPreviewQuestion, saveQuestionDifficulty, saveQuestionOverride } from "./question-workflow.ts";
+import { listRemoteQuestions, setRemoteQuestionDifficulty, setRemoteQuestionEnabled, updateRemoteQuestionPoint } from "./question-d1-admin.ts";
 import type { MapPoint } from "../../src/shared/types.ts";
+import type { QuestionDifficulty } from "../../src/shared/questionDifficulty.ts";
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.statusCode = status;
@@ -55,7 +56,7 @@ export function questionDevServerPlugin(): Plugin {
           }
           return;
         }
-        const publishedAction = url.pathname.match(/^\/__dev_api__\/published\/([^/]+)\/(enable|disable|point)$/);
+        const publishedAction = url.pathname.match(/^\/__dev_api__\/published\/([^/]+)\/(enable|disable|point|difficulty)$/);
         if (publishedAction) {
           if (!isLocalMutation(request)) {
             sendJson(response, 403, { error: "LOCAL_DEV_ACTION_REQUIRED" });
@@ -75,13 +76,20 @@ export function questionDevServerPlugin(): Plugin {
               sendJson(response, 200, { changed: true, published: listRemoteQuestions() });
               return;
             }
+            if (publishedAction[2] === "difficulty" && request.method === "POST") {
+              const body = await readJsonBody(request) as { difficulty?: QuestionDifficulty };
+              if (!body.difficulty) throw new Error("SELECT_A_DIFFICULTY");
+              const changed = setRemoteQuestionDifficulty(questionId, body.difficulty);
+              sendJson(response, 200, { changed, published: listRemoteQuestions() });
+              return;
+            }
             sendJson(response, 405, { error: "METHOD_NOT_ALLOWED" });
           } catch (error) {
             sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
           }
           return;
         }
-        const action = url.pathname.match(/^\/__dev_api__\/questions\/([^/]+)\/(override|publish)$/);
+        const action = url.pathname.match(/^\/__dev_api__\/questions\/([^/]+)\/(override|difficulty|publish)$/);
         if (!action) {
           next();
           return;
@@ -99,6 +107,12 @@ export function questionDevServerPlugin(): Plugin {
           }
           if (action[2] === "override" && request.method === "DELETE") {
             sendJson(response, 200, { question: saveQuestionOverride(previewId, null) });
+            return;
+          }
+          if (action[2] === "difficulty" && request.method === "POST") {
+            const body = await readJsonBody(request) as { difficulty?: QuestionDifficulty };
+            if (!body.difficulty) throw new Error("SELECT_A_DIFFICULTY");
+            sendJson(response, 200, { question: saveQuestionDifficulty(previewId, body.difficulty) });
             return;
           }
           if (action[2] === "publish" && request.method === "POST") {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_MULTIPLAYER_PLAYERS } from "./multiplayer";
+import { DifficultyPoolSchema } from "./questionDifficulty";
 import { roomCodeSchema } from "./schemas";
 
 export const RoomInviteUnavailableReasonSchema = z.enum([
@@ -12,6 +13,7 @@ const RoomInviteSettingsSchema = z.object({
   totalRounds: z.number().int().min(1).max(50),
   roundDurationSeconds: z.number().int().min(10).max(120),
   mapCount: z.number().int().min(1),
+  difficultyPool: DifficultyPoolSchema,
   serverRegion: z.enum(["auto", "asia"]),
 }).strict();
 

@@ -19,6 +19,7 @@ const DEFAULT_ROUND_DURATION_MS = roundDurationMs(DEFAULT_ROOM_SETTINGS);
 const question: Question = {
   id: "test",
   imageAssetKey: "questions/test-asset-id.webp",
+  difficulty: "hard",
   correctMapId: "mirage",
   correctLayerId: "main",
   correctPoint: { x: 0.5, y: 0.5 },

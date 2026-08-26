@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { displayedPreviewPoint, getFinalQuestionPoint, getPreviewQuestionStatus, radarPreviewUrl, screenshotPreviewUrl, updateQuestionOverrides, type PreviewQuestion } from "./questionPreview";
+import { displayedPreviewPoint, getEffectiveQuestionDifficulty, getFinalQuestionPoint, getPreviewQuestionStatus, radarPreviewUrl, screenshotPreviewUrl, updateQuestionDifficultyOverrides, updateQuestionOverrides, type PreviewQuestion } from "./questionPreview";
 import { copyQuestionPreviewAsset, copyRadarPreviewAsset, writeQuestionPreviewManifests } from "./questionPreviewWriter";
 
 const temporaryDirectories: string[] = [];
@@ -25,6 +25,7 @@ const question: PreviewQuestion = {
   sourceImageSha256: "a".repeat(64),
   mapId: "mirage",
   layerId: "main",
+  difficulty: "hard",
   worldPosition: { x: 1365.081055, y: -5.346069, z: -167.96875 },
   viewAngle: { pitch: 0, yaw: 49.440536, roll: 0 },
   automaticPoint: { x: 0.8974767685546875, y: 0.3356144666015625 },
@@ -42,6 +43,7 @@ describe("development question previews", () => {
     for (const path of [generatedPath, publicPath]) {
       const saved = JSON.parse(readFileSync(path, "utf8")) as { questions: PreviewQuestion[] };
       expect(saved.questions[0].automaticPoint).toEqual(question.automaticPoint);
+      expect(saved.questions[0].difficulty).toBe("hard");
     }
   });
 
@@ -86,6 +88,16 @@ describe("development question previews", () => {
     const reset = updateQuestionOverrides(refreshed, question.previewId, null);
     expect(getFinalQuestionPoint({ automaticPoint: question.automaticPoint, manualOverride: reset[question.previewId] }))
       .toEqual(question.automaticPoint);
+  });
+
+  it("persists difficulty separately from coordinate overrides", () => {
+    const coordinateOverrides = updateQuestionOverrides({}, question.previewId, { x: 0.4, y: 0.5 });
+    const difficulties = updateQuestionDifficultyOverrides({}, question.previewId, "hell");
+    expect(getEffectiveQuestionDifficulty(question, difficulties[question.previewId])).toBe("hell");
+    expect(coordinateOverrides[question.previewId]).toEqual({ x: 0.4, y: 0.5 });
+    expect(difficulties[question.previewId]).toBe("hell");
+    expect(updateQuestionDifficultyOverrides(difficulties, question.previewId, null)).toEqual({});
+    expect(getEffectiveQuestionDifficulty(question)).toBe("hard");
   });
 
   it("does not retain the fake query-preview fallback", () => {

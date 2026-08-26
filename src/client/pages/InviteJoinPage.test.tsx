@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
+import { QUESTION_DIFFICULTIES } from "../../shared/questionDifficulty";
 import { InviteJoinPage } from "./InviteJoinPage";
 
 const validPreview = {
@@ -14,7 +15,13 @@ const validPreview = {
   reason: null,
   playerCount: 1,
   maxPlayers: 5,
-  settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
+  settings: {
+    totalRounds: 5,
+    roundDurationSeconds: 20,
+    mapCount: 8,
+    difficultyPool: [...QUESTION_DIFFICULTIES],
+    serverRegion: "auto",
+  },
 };
 
 function response(status: number, body: unknown): Response {
@@ -45,6 +52,7 @@ describe("room invite join page", () => {
     expect(screen.getByText("5 ROUNDS")).toBeTruthy();
     expect(screen.getByText("20 SEC")).toBeTruthy();
     expect(screen.getByText("1 / 5 PLAYERS")).toBeTruthy();
+    expect(screen.getByText("ALL DIFFICULTIES")).toBeTruthy();
     expect(window.location.pathname).toBe("/join/87MDB");
     expect(document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content).toBe("noindex, nofollow");
   });

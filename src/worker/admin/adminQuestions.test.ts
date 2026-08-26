@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AdminQuestion } from "../../shared/adminQuestions";
+import type { QuestionDifficulty } from "../../shared/questionDifficulty";
 import type { ServerQuestion } from "../game/questions";
 import type { PublishQuestionInput, QuestionListItem } from "../questions/QuestionRepository";
 import {
@@ -27,6 +28,7 @@ class MemoryAdminRepository implements AdminQuestionRepository {
       imageAssetKey: input.imageAssetKey,
       mapId: input.correctMapId,
       layerId: input.correctLayerId,
+      difficulty: input.difficulty,
       correctPoint: input.correctPoint,
       ...(input.automaticPoint ? { automaticPoint: input.automaticPoint } : {}),
       ...(input.worldPosition ? { worldPosition: input.worldPosition } : {}),
@@ -47,6 +49,13 @@ class MemoryAdminRepository implements AdminQuestionRepository {
     question.coordinateSource = "manual-override";
     return true;
   }
+  async updateDifficulty(questionId: string, difficulty: QuestionDifficulty): Promise<boolean> {
+    const question = this.questions.find((candidate) => candidate.id === questionId);
+    if (!question || question.difficulty === difficulty) return false;
+    question.difficulty = difficulty;
+    question.updatedAt = "2026-08-25T00:00:00.000Z";
+    return true;
+  }
   async setEnabled(questionId: string, enabled: boolean): Promise<boolean> {
     const question = this.questions.find((candidate) => candidate.id === questionId);
     if (!question) return false;
@@ -57,6 +66,18 @@ class MemoryAdminRepository implements AdminQuestionRepository {
 
 function adminEnv(store: unknown): Env {
   return { GAME_ASSETS: store } as Env;
+}
+
+function validUploadForm(difficulty?: string): FormData {
+  const form = new FormData();
+  form.set("image", new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "question.jpg", { type: "image/jpeg" }));
+  form.set("mapId", "mirage");
+  form.set("layerId", "main");
+  form.set("correctX", "0.25");
+  form.set("correctY", "0.75");
+  form.set("coordinateSource", "manual-override");
+  if (difficulty !== undefined) form.set("difficulty", difficulty);
+  return form;
 }
 
 describe("online admin question management", () => {
@@ -129,6 +150,7 @@ describe("online admin question management", () => {
     const form = new FormData();
     form.set("image", new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "question.jpg", { type: "image/jpeg" }));
     form.set("mapId", "ancient");
+    form.set("difficulty", "easy");
     form.set("layerId", "main");
     form.set("correctX", "0.25");
     form.set("correctY", "0.75");
@@ -146,11 +168,54 @@ describe("online admin question management", () => {
 
     expect(response.status).toBe(201);
     const body = await response.json() as { question: AdminQuestion };
-    expect(body.question).toMatchObject({ mapId: "ancient", layerId: "main", correctPoint: { x: 0.25, y: 0.75 }, enabled: true });
+    expect(body.question).toMatchObject({ mapId: "ancient", layerId: "main", difficulty: "easy", correctPoint: { x: 0.25, y: 0.75 }, enabled: true });
     expect(body.question.imageUrl).toBe(`/media/questions/${body.question.id}`);
     expect(repository.questions[0].imageAssetKey).toMatch(/^questions\/q-[a-f0-9]{16}\.jpg$/);
     expect(events[0]).toMatch(/^put:questions\/q-[a-f0-9]{16}\.jpg:image\/jpeg$/);
     expect(events[1]).toMatch(/^head:questions\/q-[a-f0-9]{16}\.jpg$/);
+  });
+
+  it.each(["easy", "hard", "hell"] as const)("accepts the required %s difficulty on upload", async (difficulty) => {
+    const repository = new MemoryAdminRepository();
+    const stored = new Map<string, ArrayBuffer>();
+    const store = {
+      async put(key: string, value: ArrayBuffer) { stored.set(key, value); return {}; },
+      async head(key: string) { return stored.has(key) ? {} : null; },
+      async delete(key: string) { stored.delete(key); },
+    };
+    const response = await handleAdminRequest(
+      new Request("https://game.example/admin/api/questions", {
+        method: "POST",
+        headers: { origin: "https://game.example", "x-cs2-admin-action": "1" },
+        body: validUploadForm(difficulty),
+      }),
+      adminEnv(store),
+      { email: "admin@example.com" },
+      repository,
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json() as { question: AdminQuestion };
+    expect(body.question.difficulty).toBe(difficulty);
+    expect(repository.questions[0].difficulty).toBe(difficulty);
+  });
+
+  it.each([undefined, "medium"])("rejects missing or invalid difficulty %s before writing R2", async (difficulty) => {
+    const put = vi.fn();
+    const response = await handleAdminRequest(
+      new Request("https://game.example/admin/api/questions", {
+        method: "POST",
+        headers: { origin: "https://game.example", "x-cs2-admin-action": "1" },
+        body: validUploadForm(difficulty),
+      }),
+      adminEnv({ put }),
+      { email: "admin@example.com" },
+      new MemoryAdminRepository(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "INVALID_DIFFICULTY" });
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("publishes coordinate-mode uploads using the server calculation instead of client point fields", async () => {
@@ -164,6 +229,7 @@ describe("online admin question management", () => {
     const form = new FormData();
     form.set("image", new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "coordinate.jpg", { type: "image/jpeg" }));
     form.set("mapId", "mirage");
+    form.set("difficulty", "hell");
     form.set("answerMode", "world-coordinates");
     form.set("consoleCoordinates", "setpos_exact -2331.545654 -477.949829 -63.248474;setang_exact -13.700989 -145.679047 0");
     form.set("correctX", "0");
@@ -194,6 +260,7 @@ describe("online admin question management", () => {
       const form = new FormData();
       form.set("image", new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "bad.jpg", { type: "image/jpeg" }));
       form.set("mapId", "mirage");
+      form.set("difficulty", "hard");
       form.set("answerMode", "world-coordinates");
       form.set("consoleCoordinates", consoleCoordinates);
       const response = await handleAdminRequest(
@@ -209,6 +276,66 @@ describe("online admin question management", () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toEqual({ error: "INVALID_CONSOLE_COORDINATES" });
     }
+  });
+
+  it("updates only question difficulty through the metadata PATCH route", async () => {
+    const repository = new MemoryAdminRepository();
+    await repository.publish({
+      id: "q-admin-test0001",
+      imageAssetKey: "questions/q-admin-test0001.webp",
+      correctMapId: "mirage",
+      correctLayerId: "main",
+      difficulty: "hard",
+      correctPoint: { x: 0.2, y: 0.8 },
+      coordinateSource: "manual-override",
+      contentHash: "admin-test-hash",
+      sourcePreviewId: null,
+      enabled: true,
+    });
+    const before = structuredClone(repository.questions[0]);
+    const response = await handleAdminRequest(
+      new Request("https://game.example/admin/api/questions/q-admin-test0001/difficulty", {
+        method: "PATCH",
+        headers: {
+          origin: "https://game.example",
+          "x-cs2-admin-action": "1",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ difficulty: "hell" }),
+      }),
+      adminEnv({}),
+      { email: "admin@example.com" },
+      repository,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { question: AdminQuestion };
+    expect(body.question.difficulty).toBe("hell");
+    expect(repository.questions[0]).toEqual({
+      ...before,
+      difficulty: "hell",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    });
+  });
+
+  it("rejects invalid difficulty PATCH values", async () => {
+    const response = await handleAdminRequest(
+      new Request("https://game.example/admin/api/questions/q-admin-test0001/difficulty", {
+        method: "PATCH",
+        headers: {
+          origin: "https://game.example",
+          "x-cs2-admin-action": "1",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ difficulty: "medium" }),
+      }),
+      adminEnv({}),
+      { email: "admin@example.com" },
+      new MemoryAdminRepository(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "INVALID_DIFFICULTY" });
   });
 
   it("requires same-origin proof for mutations", async () => {

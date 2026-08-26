@@ -7,6 +7,7 @@ describe("playing-state question privacy", () => {
     const testOnlyQuestion: Question = {
       id: "q-0123456789ab",
       imageAssetKey: "questions/0123456789abcdef.webp",
+      difficulty: "hell",
       correctMapId: "nuke",
       correctLayerId: "lower",
       correctPoint: { x: 0.42, y: 0.61 },

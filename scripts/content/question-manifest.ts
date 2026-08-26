@@ -2,12 +2,14 @@ import { writeFileSync } from "node:fs";
 import type { MapId, RadarLayerId } from "../../src/shared/maps.ts";
 import type { MapPoint } from "../../src/shared/types.ts";
 import type { ViewAngle, WorldPosition } from "../../src/shared/radarCoordinates.ts";
+import type { QuestionDifficulty } from "../../src/shared/questionDifficulty.ts";
 
 export interface ManifestQuestion {
   id: string;
   imageAssetId: string;
   correctMapId: MapId;
   correctLayerId: RadarLayerId;
+  difficulty: QuestionDifficulty;
   correctPoint: MapPoint;
   automaticPoint: MapPoint;
   worldPosition: WorldPosition;

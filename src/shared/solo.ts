@@ -7,6 +7,11 @@ import {
   MIN_ROUND_DURATION_SECONDS,
   MapPoolSchema,
 } from "./roomSettings";
+import {
+  DEFAULT_DIFFICULTY_POOL,
+  DifficultyPoolSchema,
+  type QuestionDifficulty,
+} from "./questionDifficulty";
 import type { PlayerRoundResult, PublicQuestion } from "./types";
 
 export const SOLO_SESSION_ID_PATTERN = /^[a-f0-9]{64}$/;
@@ -15,12 +20,14 @@ export interface SoloSettings {
   totalRounds: number;
   roundDurationSeconds: number;
   mapPool: MapId[];
+  difficultyPool: QuestionDifficulty[];
 }
 
 export const DEFAULT_SOLO_SETTINGS: SoloSettings = {
   totalRounds: 5,
   roundDurationSeconds: 20,
   mapPool: [...MAP_IDS],
+  difficultyPool: [...DEFAULT_DIFFICULTY_POOL],
 };
 
 export const SoloSettingsSchema = z.object({
@@ -32,6 +39,7 @@ export const SoloSettingsSchema = z.object({
     .min(MIN_ROUND_DURATION_SECONDS)
     .max(MAX_ROUND_DURATION_SECONDS),
   mapPool: MapPoolSchema,
+  difficultyPool: DifficultyPoolSchema,
 }).strict();
 
 export const CreateSoloSessionRequestSchema = z.object({

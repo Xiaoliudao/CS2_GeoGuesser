@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { MAP_IDS, type MapId } from "../../shared/maps";
+import {
+  QUESTION_DIFFICULTIES,
+  type QuestionDifficulty,
+} from "../../shared/questionDifficulty";
 import type { QuestionAvailability } from "../../shared/roomSettings";
 import { nicknameSchema } from "../../shared/schemas";
 import { DEFAULT_SOLO_SETTINGS, SoloSettingsSchema, type SoloSettings } from "../../shared/solo";
@@ -26,6 +30,9 @@ function SoloSetup({
   const [roundsInput, setRoundsInput] = useState(String(DEFAULT_SOLO_SETTINGS.totalRounds));
   const [durationInput, setDurationInput] = useState(String(DEFAULT_SOLO_SETTINGS.roundDurationSeconds));
   const [mapPool, setMapPool] = useState<MapId[]>([...DEFAULT_SOLO_SETTINGS.mapPool]);
+  const [difficultyPool, setDifficultyPool] = useState<QuestionDifficulty[]>([
+    ...DEFAULT_SOLO_SETTINGS.difficultyPool,
+  ]);
   const [availability, setAvailability] = useState<QuestionAvailability | null>(null);
   const [availabilityKey, setAvailabilityKey] = useState("");
   const [checkingAvailability, setCheckingAvailability] = useState(true);
@@ -34,16 +41,17 @@ function SoloSetup({
     totalRounds: Number(roundsInput),
     roundDurationSeconds: Number(durationInput),
     mapPool,
-  }), [durationInput, mapPool, roundsInput]);
-  const mapPoolKey = mapPool.join(",");
-  const currentAvailability = availabilityKey === mapPoolKey ? availability : null;
+    difficultyPool,
+  }), [difficultyPool, durationInput, mapPool, roundsInput]);
+  const selectionKey = `${mapPool.join(",")}|${difficultyPool.join(",")}`;
+  const currentAvailability = availabilityKey === selectionKey ? availability : null;
   const canStart = settingsResult.success
     && !checkingAvailability
     && currentAvailability !== null
     && settingsResult.data.totalRounds <= currentAvailability.availableQuestions;
 
   useEffect(() => {
-    if (mapPool.length === 0) {
+    if (mapPool.length === 0 || difficultyPool.length === 0) {
       setAvailability(null);
       setAvailabilityKey("");
       setAvailabilityError("");
@@ -57,14 +65,14 @@ function SoloSetup({
     void fetch("/api/questions/availability", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mapPool }),
+      body: JSON.stringify({ mapPool, difficultyPool }),
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) throw new Error("Question bank unavailable");
       const next = await response.json() as QuestionAvailability;
       if (!controller.signal.aborted) {
         setAvailability(next);
-        setAvailabilityKey(mapPool.join(","));
+        setAvailabilityKey(`${mapPool.join(",")}|${difficultyPool.join(",")}`);
       }
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) setAvailabilityError(error instanceof Error ? error.message : "Question bank unavailable");
@@ -72,7 +80,7 @@ function SoloSetup({
       if (!controller.signal.aborted) setCheckingAvailability(false);
     });
     return () => controller.abort();
-  }, [mapPool]);
+  }, [difficultyPool, mapPool]);
 
   return (
     <section className="stage-card solo-setup-card">
@@ -85,18 +93,22 @@ function SoloSetup({
         roundsInput={roundsInput}
         durationInput={durationInput}
         mapPool={mapPool}
+        difficultyPool={difficultyPool}
         availability={currentAvailability}
-        checkingAvailability={checkingAvailability || availabilityKey !== mapPoolKey}
+        checkingAvailability={checkingAvailability || availabilityKey !== selectionKey}
         availabilityError={availabilityError}
         onToggle={() => setExpanded((current) => !current)}
         onRoundsChange={setRoundsInput}
         onDurationChange={setDurationInput}
         onMapPoolChange={(next) => setMapPool(MAP_IDS.filter((mapId) => next.includes(mapId)))}
+        onDifficultyPoolChange={(next) => setDifficultyPool(
+          QUESTION_DIFFICULTIES.filter((difficulty) => next.includes(difficulty)),
+        )}
       />
       <button
         className="primary-button solo-start-button"
         type="button"
-        disabled={busy}
+        disabled={busy || !canStart}
         aria-disabled={busy || !canStart}
         onClick={() => {
           if (!settingsResult.success || !canStart) {

@@ -1,6 +1,7 @@
 import type { MapId, RadarLayerId } from "../shared/maps.ts";
 import type { MapPoint } from "../shared/types.ts";
 import type { ViewAngle, WorldPosition } from "../shared/radarCoordinates.ts";
+import type { QuestionDifficulty } from "../shared/questionDifficulty.ts";
 
 export interface PreviewQuestion {
   previewId: string;
@@ -10,6 +11,7 @@ export interface PreviewQuestion {
   sourceImageSha256: string;
   mapId: MapId;
   layerId: RadarLayerId;
+  difficulty?: QuestionDifficulty;
   worldPosition: WorldPosition;
   viewAngle?: ViewAngle;
   automaticPoint: MapPoint;
@@ -26,12 +28,14 @@ export interface QuestionPreviewManifest {
 export type PreviewQuestionStatus = "preview" | "overridden" | "publish-pending" | "published";
 
 export interface QaPreviewQuestion extends PreviewQuestion {
+  difficulty?: QuestionDifficulty;
   manualOverride?: MapPoint;
   finalPoint: MapPoint;
   status: PreviewQuestionStatus;
 }
 
 export type QuestionOverrideMap = Record<string, MapPoint>;
+export type QuestionDifficultyOverrideMap = Record<string, QuestionDifficulty>;
 
 export function screenshotPreviewUrl(relativeSourcePath: string): string {
   const encodedPath = relativeSourcePath
@@ -70,6 +74,24 @@ export function updateQuestionOverrides(current: QuestionOverrideMap, previewId:
     next[previewId] = point;
   }
   return next;
+}
+
+export function updateQuestionDifficultyOverrides(
+  current: QuestionDifficultyOverrideMap,
+  previewId: string,
+  difficulty: QuestionDifficulty | null,
+): QuestionDifficultyOverrideMap {
+  const next = { ...current };
+  if (difficulty === null) delete next[previewId];
+  else next[previewId] = difficulty;
+  return next;
+}
+
+export function getEffectiveQuestionDifficulty(
+  question: { difficulty?: QuestionDifficulty },
+  override?: QuestionDifficulty | null,
+): QuestionDifficulty | undefined {
+  return override ?? question.difficulty;
 }
 
 export function displayedPreviewPoint(automaticPoint: MapPoint, manualOverride: MapPoint | null): MapPoint {

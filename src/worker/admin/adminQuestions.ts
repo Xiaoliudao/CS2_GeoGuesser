@@ -2,6 +2,7 @@ import type { AdminQuestion } from "../../shared/adminQuestions";
 import { parseGetpos } from "../../content/getpos";
 import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, getRadarLayer, MAP_IDS, type MapId, type RadarLayerId } from "../../shared/maps";
+import { QuestionDifficultySchema, type QuestionDifficulty } from "../../shared/questionDifficulty";
 import {
   selectRadarLayer,
   worldToRadarPoint,
@@ -29,6 +30,7 @@ export interface AdminQuestionRepository {
   contentHashExists(contentHash: string): Promise<boolean>;
   publish(input: PublishQuestionInput): Promise<ServerQuestion>;
   updatePoint(questionId: string, point: MapPoint, coordinateSource: ServerQuestion["coordinateSource"]): Promise<boolean>;
+  updateDifficulty(questionId: string, difficulty: QuestionDifficulty): Promise<boolean>;
   setEnabled(questionId: string, enabled: boolean): Promise<boolean>;
 }
 
@@ -66,6 +68,7 @@ function questionDto(question: QuestionListItem): AdminQuestion {
     id: question.id,
     mapId: question.mapId,
     layerId: question.layerId,
+    difficulty: question.difficulty,
     correctPoint: question.correctPoint,
     ...(question.automaticPoint ? { automaticPoint: question.automaticPoint } : {}),
     ...(question.worldPosition ? { worldPosition: question.worldPosition } : {}),
@@ -110,6 +113,12 @@ function requireString(form: FormData, key: string): string {
 function requireMapId(value: string): MapId {
   if (!MAP_IDS.includes(value as MapId)) throw new AdminRequestError(400, "INVALID_MAP_ID");
   return value as MapId;
+}
+
+function requireDifficulty(value: unknown): QuestionDifficulty {
+  const parsed = QuestionDifficultySchema.safeParse(value);
+  if (!parsed.success) throw new AdminRequestError(400, "INVALID_DIFFICULTY");
+  return parsed.data;
 }
 
 function optionalNumber(form: FormData, key: string): number | undefined {
@@ -304,6 +313,9 @@ async function createQuestion(
   }
 
   const form = await request.formData();
+  // Validate all metadata that determines the D1 row before reading or writing
+  // image bytes. Invalid difficulty values must never create an orphan R2 object.
+  const difficulty = requireDifficulty(form.get("difficulty"));
   const image = form.get("image");
   if (!(image instanceof File) || image.size === 0) throw new AdminRequestError(400, "QUESTION_IMAGE_REQUIRED");
   if (image.size > MAX_ADMIN_IMAGE_BYTES) throw new AdminRequestError(413, "QUESTION_IMAGE_TOO_LARGE");
@@ -338,6 +350,7 @@ async function createQuestion(
       imageAssetKey,
       correctMapId: answer.mapId,
       correctLayerId: answer.layerId,
+      difficulty,
       correctPoint: answer.correctPoint,
       ...(answer.automaticPoint ? { automaticPoint: answer.automaticPoint } : {}),
       ...(answer.worldPosition ? { worldPosition: answer.worldPosition } : {}),
@@ -384,6 +397,22 @@ async function updateEnabled(request: Request, repository: AdminQuestionReposito
   return adminJson({ question: questionDto(updated) });
 }
 
+async function updateDifficulty(
+  request: Request,
+  repository: AdminQuestionRepository,
+  questionId: string,
+): Promise<Response> {
+  requireSameOriginMutation(request);
+  const body = objectRecord(await readSmallJson(request));
+  const difficulty = requireDifficulty(body.difficulty);
+  const existing = await repository.getListItemById(questionId);
+  if (!existing) throw new AdminRequestError(404, "QUESTION_NOT_FOUND");
+  if (existing.difficulty !== difficulty) await repository.updateDifficulty(questionId, difficulty);
+  const updated = await repository.getListItemById(questionId);
+  if (!updated) throw new AdminRequestError(404, "QUESTION_NOT_FOUND");
+  return adminJson({ question: questionDto(updated) });
+}
+
 export async function handleAdminRequest(
   request: Request,
   env: Env,
@@ -412,6 +441,11 @@ export async function handleAdminRequest(
     if (enabledMatch && request.method === "PATCH") {
       if (!OPAQUE_QUESTION_ID.test(enabledMatch[1])) throw new AdminRequestError(400, "INVALID_QUESTION_ID");
       return await updateEnabled(request, repository, enabledMatch[1]);
+    }
+    const difficultyMatch = url.pathname.match(/^\/admin\/api\/questions\/([^/]+)\/difficulty$/);
+    if (difficultyMatch && request.method === "PATCH") {
+      if (!OPAQUE_QUESTION_ID.test(difficultyMatch[1])) throw new AdminRequestError(400, "INVALID_QUESTION_ID");
+      return await updateDifficulty(request, repository, difficultyMatch[1]);
     }
     return adminJson({ error: "ADMIN_ROUTE_NOT_FOUND" }, { status: 404 });
   } catch (error) {

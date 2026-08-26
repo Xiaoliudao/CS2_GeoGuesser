@@ -4,10 +4,12 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAP_IDS } from "../../shared/maps";
+import { QUESTION_DIFFICULTIES } from "../../shared/questionDifficulty";
 import { DEFAULT_ROOM_SETTINGS } from "../../shared/roomSettings";
 import {
   MATCH_SETTINGS_AVAILABILITY_ID,
   MATCH_SETTINGS_DETAILS_ID,
+  MATCH_SETTINGS_DIFFICULTY_POOL_ID,
   MATCH_SETTINGS_DURATION_INPUT_ID,
   MATCH_SETTINGS_MAP_POOL_ID,
   MATCH_SETTINGS_ROUNDS_INPUT_ID,
@@ -41,10 +43,16 @@ function installFetch({
     reason: null,
     playerCount: 1,
     maxPlayers: 5,
-    settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
+    settings: {
+      totalRounds: 5,
+      roundDurationSeconds: 20,
+      mapCount: 8,
+      difficultyPool: [...QUESTION_DIFFICULTIES],
+      serverRegion: "auto",
+    },
   },
 }: FetchScenario = {}) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/questions/availability") {
       return response(200, { availableQuestions, byMap: {} });
@@ -59,6 +67,10 @@ function installFetch({
 
 function roomCreateCalls(fetchMock: ReturnType<typeof vi.fn>) {
   return fetchMock.mock.calls.filter(([input]) => String(input) === "/api/rooms");
+}
+
+function availabilityCalls(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.filter(([input]) => String(input) === "/api/questions/availability");
 }
 
 async function waitForAvailability() {
@@ -121,6 +133,11 @@ describe("HomePage compact room creation", () => {
     const createButton = await waitForAvailability();
 
     expect(details.hidden).toBe(true);
+    const [, availabilityInit] = availabilityCalls(fetchMock)[0];
+    expect(JSON.parse(String((availabilityInit as RequestInit).body))).toEqual({
+      mapPool: [...MAP_IDS],
+      difficultyPool: [...QUESTION_DIFFICULTIES],
+    });
     await user.click(createButton);
 
     await waitFor(() => expect(roomCreateCalls(fetchMock)).toHaveLength(1));
@@ -135,7 +152,7 @@ describe("HomePage compact room creation", () => {
     expect(details.hidden).toBe(true);
   });
 
-  it("blocks invalid rounds, expands settings, and focuses the invalid input", async () => {
+  it("disables room creation for an invalid round count", async () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
@@ -147,14 +164,13 @@ describe("HomePage compact room creation", () => {
     await user.clear(input);
     await user.type(input, "0");
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
-    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
-
-    await waitFor(() => expect(document.activeElement).toBe(input));
-    expect((document.getElementById(MATCH_SETTINGS_DETAILS_ID) as HTMLDivElement).hidden).toBe(false);
+    expect((screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect((document.getElementById(MATCH_SETTINGS_DETAILS_ID) as HTMLDivElement).hidden).toBe(true);
     expect(roomCreateCalls(fetchMock)).toHaveLength(0);
   });
 
-  it("blocks an invalid timer and focuses its custom input", async () => {
+  it("disables room creation for an invalid timer", async () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
@@ -166,13 +182,12 @@ describe("HomePage compact room creation", () => {
     await user.clear(input);
     await user.type(input, "9");
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
-    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
-
-    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect((screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(roomCreateCalls(fetchMock)).toHaveLength(0);
   });
 
-  it("blocks an empty map pool and focuses the map controls", async () => {
+  it("disables room creation for an empty map pool", async () => {
     const user = userEvent.setup();
     const fetchMock = installFetch();
     render(<HomePage />);
@@ -182,25 +197,62 @@ describe("HomePage compact room creation", () => {
     await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
     await user.click(screen.getByRole("button", { name: "CLEAR" }));
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
-    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
-
-    const mapPool = document.getElementById(MATCH_SETTINGS_MAP_POOL_ID);
-    await waitFor(() => expect(document.activeElement).toBe(mapPool));
+    expect((screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.getElementById(MATCH_SETTINGS_MAP_POOL_ID)?.getAttribute("aria-invalid")).toBe("true");
     expect(roomCreateCalls(fetchMock)).toHaveLength(0);
   });
 
-  it("blocks a question shortage from collapsed defaults and focuses its message", async () => {
+  it("requests and creates from the selected map and difficulty intersection", async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch();
+    render(<HomePage />);
+    await openMultiplayer(user);
+    await waitForAvailability();
+
+    await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
+    await user.click(screen.getByRole("checkbox", { name: "HARD" }));
+    await waitFor(() => expect(availabilityCalls(fetchMock)).toHaveLength(2));
+    await waitForAvailability();
+    await user.click(screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }));
+
+    await waitFor(() => expect(roomCreateCalls(fetchMock)).toHaveLength(1));
+    const [, availabilityInit] = availabilityCalls(fetchMock)[1];
+    expect(JSON.parse(String((availabilityInit as RequestInit).body))).toEqual({
+      mapPool: [...MAP_IDS],
+      difficultyPool: ["easy", "hell"],
+    });
+    const [, createInit] = roomCreateCalls(fetchMock)[0];
+    expect(JSON.parse(String((createInit as RequestInit).body))).toMatchObject({
+      settings: { difficultyPool: ["easy", "hell"] },
+    });
+  });
+
+  it("disables room creation for an empty difficulty pool", async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch();
+    render(<HomePage />);
+    await openMultiplayer(user);
+    await waitForAvailability();
+
+    await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
+    for (const difficulty of QUESTION_DIFFICULTIES) {
+      await user.click(screen.getByRole("checkbox", { name: difficulty.toUpperCase() }));
+    }
+    await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
+    const createButton = screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" }) as HTMLButtonElement;
+    expect(createButton.disabled).toBe(true);
+    expect(document.getElementById(MATCH_SETTINGS_DIFFICULTY_POOL_ID)?.getAttribute("aria-invalid")).toBe("true");
+    expect(roomCreateCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it("disables room creation when the selected pool has too few questions", async () => {
     const user = userEvent.setup();
     const fetchMock = installFetch({ availableQuestions: 4 });
     render(<HomePage />);
     await openMultiplayer(user);
     const createButton = screen.getByRole("button", { name: "CREATE MULTIPLAYER ROOM" });
     await waitFor(() => expect(document.querySelector(".match-settings-note")?.textContent).toContain("ONLY 4 QUESTIONS ARE AVAILABLE"));
-
-    await user.click(createButton);
-
-    const availability = document.getElementById(MATCH_SETTINGS_AVAILABILITY_ID);
-    await waitFor(() => expect(document.activeElement).toBe(availability));
+    expect((createButton as HTMLButtonElement).disabled).toBe(true);
     expect(roomCreateCalls(fetchMock)).toHaveLength(0);
   });
 

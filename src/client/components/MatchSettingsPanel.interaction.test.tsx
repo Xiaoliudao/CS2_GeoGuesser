@@ -5,6 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { MAP_IDS, type MapId } from "../../shared/maps";
+import { QUESTION_DIFFICULTIES, type QuestionDifficulty } from "../../shared/questionDifficulty";
 import type { ServerRegion } from "../../shared/roomSettings";
 import { MATCH_SETTINGS_DETAILS_ID, MatchSettingsPanel } from "./MatchSettingsPanel";
 
@@ -15,6 +16,7 @@ function ControlledSettings() {
   const [roundsInput, setRoundsInput] = useState("5");
   const [durationInput, setDurationInput] = useState("20");
   const [mapPool, setMapPool] = useState<MapId[]>([...MAP_IDS]);
+  const [difficultyPool, setDifficultyPool] = useState<QuestionDifficulty[]>([...QUESTION_DIFFICULTIES]);
   const [serverRegion, setServerRegion] = useState<ServerRegion>("auto");
 
   return (
@@ -23,6 +25,7 @@ function ControlledSettings() {
       roundsInput={roundsInput}
       durationInput={durationInput}
       mapPool={mapPool}
+      difficultyPool={difficultyPool}
       serverRegion={serverRegion}
       availability={{ availableQuestions: 61, byMap: {} }}
       checkingAvailability={false}
@@ -31,6 +34,7 @@ function ControlledSettings() {
       onRoundsChange={setRoundsInput}
       onDurationChange={setDurationInput}
       onMapPoolChange={setMapPool}
+      onDifficultyPoolChange={setDifficultyPool}
       onServerRegionChange={setServerRegion}
     />
   );
@@ -67,10 +71,11 @@ describe("MatchSettingsPanel interactions", () => {
     await user.click(screen.getByRole("checkbox", { name: "Mirage" }));
     await user.click(screen.getByRole("checkbox", { name: "Inferno" }));
     await user.click(screen.getByRole("checkbox", { name: "Ancient" }));
+    await user.click(screen.getByRole("checkbox", { name: "HARD" }));
     await user.click(screen.getByRole("button", { name: "ASIA" }));
     await user.click(screen.getByRole("button", { name: "HIDE SETTINGS" }));
 
-    expect(screen.getByText("15 ROUNDS · 30 SEC · 3 MAPS · ASIA")).toBeTruthy();
+    expect(screen.getByText("15 ROUNDS · 30 SEC · 3 MAPS · EASY + HELL · ASIA")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "CUSTOMIZE MATCH" }));
     expect((screen.getByLabelText("Custom question count") as HTMLInputElement).value).toBe("15");
@@ -78,6 +83,9 @@ describe("MatchSettingsPanel interactions", () => {
     expect(screen.getByRole("checkbox", { name: /Mirage/ }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("checkbox", { name: /Inferno/ }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("checkbox", { name: /Ancient/ }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "EASY" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "HARD" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("checkbox", { name: "HELL" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("button", { name: "ASIA" }).classList.contains("is-selected")).toBe(true);
   });
 

@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { previewIdentityAliases } from "../../scripts/content/question-workflow";
+import {
+  difficultyOverridesPath,
+  overridesPath,
+  previewIdentityAliases,
+  requireQuestionDifficultyForPublish,
+} from "../../scripts/content/question-workflow";
 import type { PreviewQuestion } from "./questionPreview";
 
 function preview(previewId: string, relativeSourcePath: string, hash: string): PreviewQuestion {
@@ -42,5 +47,25 @@ describe("nested question workflow identity", () => {
     );
     expect(migration).toContain("CREATE UNIQUE INDEX IF NOT EXISTS questions_source_preview_id_unique_idx");
     expect(migration).toContain("WHERE source_preview_id IS NOT NULL");
+  });
+});
+
+describe("question difficulty publish boundary", () => {
+  it.each(["easy", "hard", "hell"] as const)("accepts canonical %s difficulty", (difficulty) => {
+    expect(requireQuestionDifficultyForPublish(difficulty)).toBe(difficulty);
+  });
+
+  it.each([undefined, null, ""])("requires an explicit difficulty for new publication", (difficulty) => {
+    expect(() => requireQuestionDifficultyForPublish(difficulty)).toThrow("SELECT_A_DIFFICULTY");
+  });
+
+  it.each(["medium", "normal", "expert", [], {}])("rejects invalid difficulty %j", (difficulty) => {
+    expect(() => requireQuestionDifficultyForPublish(difficulty)).toThrow("INVALID_DIFFICULTY");
+  });
+
+  it("persists difficulty separately from coordinate overrides", () => {
+    expect(difficultyOverridesPath).not.toBe(overridesPath);
+    expect(difficultyOverridesPath).toMatch(/question-difficulty-overrides\.json$/);
+    expect(overridesPath).toMatch(/question-overrides\.json$/);
   });
 });

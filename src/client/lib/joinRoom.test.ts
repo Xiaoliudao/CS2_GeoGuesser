@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QUESTION_DIFFICULTIES } from "../../shared/questionDifficulty";
 import { joinRoom } from "./joinRoom";
 
 const validPreview = {
@@ -11,7 +12,13 @@ const validPreview = {
   reason: null,
   playerCount: 1,
   maxPlayers: 5,
-  settings: { totalRounds: 5, roundDurationSeconds: 20, mapCount: 8, serverRegion: "auto" },
+  settings: {
+    totalRounds: 5,
+    roundDurationSeconds: 20,
+    mapCount: 8,
+    difficultyPool: [...QUESTION_DIFFICULTIES],
+    serverRegion: "auto",
+  },
 };
 
 function response(status: number, body: unknown): Response {

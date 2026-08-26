@@ -8,6 +8,11 @@ import type {
 import { parseGetpos, type ParsedGetpos } from "../../content/getpos";
 import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, MAPS, type MapId, type RadarLayerId } from "../../shared/maps";
+import {
+  QUESTION_DIFFICULTIES,
+  QUESTION_DIFFICULTY_LABELS,
+  type QuestionDifficulty,
+} from "../../shared/questionDifficulty";
 import { selectRadarLayer, traceWorldToRadarPoint } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
 import { RadarPicker } from "../components/RadarPicker";
@@ -61,6 +66,7 @@ export function AdminQuestionEditorPage() {
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState("");
   const [uploadMapId, setUploadMapId] = useState<MapId>(MAPS[0].id);
   const [uploadLayerId, setUploadLayerId] = useState<RadarLayerId>(MAPS[0].layers[0].id);
+  const [uploadDifficulty, setUploadDifficulty] = useState<QuestionDifficulty | "">("");
   const [uploadPoint, setUploadPoint] = useState<MapPoint | null>(null);
   const [uploadAnswerMode, setUploadAnswerMode] = useState<UploadAnswerMode>("manual-radar");
   const [consoleCoordinates, setConsoleCoordinates] = useState("");
@@ -201,14 +207,41 @@ export function AdminQuestionEditorPage() {
     }
   }
 
+  async function saveDifficulty(difficulty: QuestionDifficulty): Promise<void> {
+    if (!selected || selected.difficulty === difficulty) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const data = await adminApi<AdminQuestionMutationResponse>(
+        `/admin/api/questions/${encodeURIComponent(selected.id)}/difficulty`,
+        {
+          method: "PATCH",
+          headers: mutationHeaders(true),
+          body: JSON.stringify({ difficulty }),
+        },
+      );
+      replaceQuestion(data.question);
+      setMessage(`DIFFICULTY UPDATED TO ${QUESTION_DIFFICULTY_LABELS[data.question.difficulty]}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function uploadQuestion(event: FormEvent): Promise<void> {
     event.preventDefault();
+    if (!uploadDifficulty) {
+      setMessage("SELECT A DIFFICULTY");
+      return;
+    }
     if (!uploadFile || !uploadPoint || (uploadAnswerMode === "world-coordinates" && !parsedCoordinates)) return;
     setBusy(true);
     setMessage("");
     const form = new FormData();
     form.set("image", uploadFile);
     form.set("mapId", uploadMapId);
+    form.set("difficulty", uploadDifficulty);
     form.set("answerMode", uploadAnswerMode);
     if (uploadAnswerMode === "world-coordinates") {
       form.set("consoleCoordinates", consoleCoordinates);
@@ -227,6 +260,7 @@ export function AdminQuestionEditorPage() {
       setQuestions((current) => [data.question, ...current]);
       setSelectedId(data.question.id);
       setUploadFile(null);
+      setUploadDifficulty("");
       setUploadPoint(null);
       setParsedCoordinates(null);
       setConsoleCoordinates("");
@@ -283,6 +317,20 @@ export function AdminQuestionEditorPage() {
             <span><strong>PASTE CS2 COORDINATES</strong><small>Convert setpos_exact automatically.</small></span>
           </label>
         </fieldset>
+        <fieldset className="admin-answer-mode">
+          <legend>DIFFICULTY (REQUIRED)</legend>
+          {QUESTION_DIFFICULTIES.map((difficulty) => <label key={difficulty} className={uploadDifficulty === difficulty ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name="upload-difficulty"
+              value={difficulty}
+              required
+              checked={uploadDifficulty === difficulty}
+              onChange={() => setUploadDifficulty(difficulty)}
+            />
+            <span><strong>{QUESTION_DIFFICULTY_LABELS[difficulty]}</strong></span>
+          </label>)}
+        </fieldset>
         <div className="admin-upload-fields">
           <label>QUESTION SCREENSHOT<input type="file" accept="image/jpeg,image/png,image/webp" required onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} /></label>
           <label>MAP<select value={uploadMapId} onChange={(event) => selectUploadMap(event.target.value as MapId)}>{MAPS.map((map) => <option key={map.id} value={map.id}>{map.name}</option>)}</select></label>
@@ -325,7 +373,8 @@ export function AdminQuestionEditorPage() {
             markerMode={uploadAnswerMode === "world-coordinates" ? "auto" : "manual"}
           />
         </div>
-        <button className="primary-button" type="submit" disabled={busy || !uploadFile || !uploadPoint || (uploadAnswerMode === "world-coordinates" && !parsedCoordinates)}>UPLOAD TO R2 + PUBLISH TO D1</button>
+        {!uploadDifficulty && <p className="editor-action-message">SELECT A DIFFICULTY</p>}
+        <button className="primary-button" type="submit" disabled={busy || !uploadDifficulty || !uploadFile || !uploadPoint || (uploadAnswerMode === "world-coordinates" && !parsedCoordinates)}>UPLOAD TO R2 + PUBLISH TO D1</button>
       </form>
 
       {message && <p className="editor-action-message admin-global-message">{message}</p>}
@@ -334,17 +383,31 @@ export function AdminQuestionEditorPage() {
         <section className="editor-controls">
           <label htmlFor="admin-question-select">LIVE QUESTION</label>
           <select id="admin-question-select" value={selected.id} onChange={(event) => { setSelectedId(event.target.value); setDraftPoint(null); setMessage(""); }}>
-            {questions.map((question) => <option key={question.id} value={question.id}>{question.id} · {getMap(question.mapId).name} · {question.enabled ? "ENABLED" : "DISABLED"}</option>)}
+            {questions.map((question) => <option key={question.id} value={question.id}>{question.id} · {getMap(question.mapId).name} · {QUESTION_DIFFICULTY_LABELS[question.difficulty]} · {question.enabled ? "ENABLED" : "DISABLED"}</option>)}
           </select>
           <div className={`coordinate-mode ${selected.enabled ? "is-auto" : "is-manual"}`}>{selected.enabled ? "LIVE / ENABLED" : "DISABLED"}</div>
           <label>MAP / LAYER</label><strong>{getMap(selected.mapId).name} · {selected.layerId.toUpperCase()}</strong>
+          <fieldset className="admin-answer-mode">
+            <legend>DIFFICULTY</legend>
+            {QUESTION_DIFFICULTIES.map((difficulty) => <label key={difficulty} className={selected.difficulty === difficulty ? "is-selected" : ""}>
+              <input
+                type="radio"
+                name={`question-difficulty-${selected.id}`}
+                value={difficulty}
+                checked={selected.difficulty === difficulty}
+                disabled={busy}
+                onChange={() => void saveDifficulty(difficulty)}
+              />
+              <span><strong>{QUESTION_DIFFICULTY_LABELS[difficulty]}</strong></span>
+            </label>)}
+          </fieldset>
           <div className="point-audit">
             <div><span>SAVED ANSWER</span><code>{formatPoint(selected.correctPoint)}</code></div>
             <div><span>DRAFT ANSWER</span><code>{draftPoint ? formatPoint(draftPoint) : "not changed"}</code></div>
             <div><span>COORDINATE SOURCE</span><code>{selected.coordinateSource}</code></div>
           </div>
           <label>AUDIT</label>
-          <pre>{JSON.stringify({ createdAt: selected.createdAt, updatedAt: selected.updatedAt, contentHash: selected.contentHash, worldPosition: selected.worldPosition ?? null, viewAngle: selected.viewAngle ?? null }, null, 2)}</pre>
+          <pre>{JSON.stringify({ difficulty: selected.difficulty, createdAt: selected.createdAt, updatedAt: selected.updatedAt, contentHash: selected.contentHash, worldPosition: selected.worldPosition ?? null, viewAngle: selected.viewAngle ?? null }, null, 2)}</pre>
           <div className="editor-actions">
             <button type="button" className="primary-button" disabled={busy || !draftPoint} onClick={() => void savePoint()}>SAVE ANSWER POINT</button>
             <button type="button" className="secondary-button" disabled={busy} onClick={() => void toggleEnabled()}>{selected.enabled ? "DISABLE QUESTION" : "ENABLE QUESTION"}</button>

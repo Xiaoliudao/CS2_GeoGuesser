@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { ManifestQuestion } from "./question-manifest.ts";
+import { QuestionDifficultySchema, type QuestionDifficulty } from "../../src/shared/questionDifficulty.ts";
 
 export const QUESTION_DATABASE_NAME = "cs2-map-guesser-db";
 export const projectRoot = resolve(import.meta.dirname, "..", "..");
@@ -11,6 +12,7 @@ export interface RemoteQuestionRow {
   image_asset_key: string;
   map_id: string;
   layer_id: string;
+  difficulty: QuestionDifficulty;
   correct_x: number;
   correct_y: number;
   world_x: number | null;
@@ -135,7 +137,7 @@ function sqlLiteral(value: string | number | boolean | null): string {
 
 function selectQuestionSql(where: string): string {
   return `SELECT
-    id, image_asset_key, map_id, layer_id, correct_x, correct_y,
+    id, image_asset_key, map_id, layer_id, difficulty, correct_x, correct_y,
     world_x, world_y, world_z, view_pitch, view_yaw, view_roll,
     automatic_x, automatic_y, coordinate_source, enabled, content_hash,
     source_preview_id, created_at, updated_at
@@ -171,6 +173,7 @@ export function getRemoteCatalogMeta(): RemoteCatalogMeta {
 }
 
 export function insertRemoteQuestion(input: RemoteQuestionInput): { inserted: boolean; row: RemoteQuestionRow } {
+  const difficulty = QuestionDifficultySchema.parse(input.question.difficulty);
   const existingById = getRemoteQuestion(input.question.id);
   const existingByHash = getRemoteQuestionByContentHash(input.contentHash);
   const existingByPreview = input.sourcePreviewId
@@ -197,6 +200,7 @@ export function insertRemoteQuestion(input: RemoteQuestionInput): { inserted: bo
     input.imageAssetKey,
     question.correctMapId,
     question.correctLayerId,
+    difficulty,
     question.correctPoint.x,
     question.correctPoint.y,
     question.worldPosition?.x ?? null,
@@ -217,7 +221,7 @@ export function insertRemoteQuestion(input: RemoteQuestionInput): { inserted: bo
 
   executeRemoteD1(`
     INSERT OR IGNORE INTO questions (
-      id, image_asset_key, map_id, layer_id, correct_x, correct_y,
+      id, image_asset_key, map_id, layer_id, difficulty, correct_x, correct_y,
       world_x, world_y, world_z, view_pitch, view_yaw, view_roll,
       automatic_x, automatic_y, coordinate_source, enabled, content_hash,
       source_preview_id, created_at, updated_at
@@ -242,6 +246,24 @@ export function setRemoteQuestionEnabled(questionId: string, enabled: boolean): 
   executeRemoteD1(`
     UPDATE questions
     SET enabled = ${enabled ? 1 : 0},
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = ${sqlLiteral(questionId)};
+    UPDATE question_catalog_meta
+    SET version = version + 1,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = 1 AND changes() = 1;
+  `);
+  return true;
+}
+
+export function setRemoteQuestionDifficulty(questionId: string, rawDifficulty: unknown): boolean {
+  const difficulty = QuestionDifficultySchema.parse(rawDifficulty);
+  const before = getRemoteQuestion(questionId);
+  if (!before) throw new Error(`QUESTION_NOT_FOUND ${questionId}`);
+  if (before.difficulty === difficulty) return false;
+  executeRemoteD1(`
+    UPDATE questions
+    SET difficulty = ${sqlLiteral(difficulty)},
         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     WHERE id = ${sqlLiteral(questionId)};
     UPDATE question_catalog_meta

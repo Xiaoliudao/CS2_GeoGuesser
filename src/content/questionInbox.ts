@@ -1,10 +1,12 @@
 import { basename, extname, relative } from "node:path";
 import { parseGetpos, type ParsedGetpos } from "./getpos.ts";
 import { MAP_IDS, type MapId } from "../shared/maps.ts";
+import { QuestionDifficultySchema, type QuestionDifficulty } from "../shared/questionDifficulty.ts";
 
 export type InboxFailureCode =
   | "MISSING_METADATA"
   | "INVALID_MAP"
+  | "INVALID_DIFFICULTY"
   | "INVALID_POSITION"
   | "MISSING_OVERVIEW"
   | "FOLDER_MAP_MISMATCH";
@@ -18,6 +20,7 @@ export class InboxImportError extends Error {
 
 export interface ParsedInboxMetadata extends ParsedGetpos {
   mapId: MapId;
+  difficulty?: QuestionDifficulty;
 }
 
 export interface InboxPair {
@@ -105,8 +108,26 @@ export function parseInboxMetadata(text: string): ParsedInboxMetadata {
   if (!MAP_IDS.includes(normalizedMap as MapId)) {
     throw new InboxImportError("INVALID_MAP", `Unsupported map ${mapMatch[1]}.`);
   }
+  const difficultyMatches = [...text.matchAll(/^\s*difficulty\s*[:=]\s*(.*?)\s*$/gim)];
+  if (difficultyMatches.length > 1) {
+    throw new InboxImportError("INVALID_DIFFICULTY", "Expected at most one difficulty line.");
+  }
+  const rawDifficulty = difficultyMatches[0]?.[1]?.trim().toLowerCase();
+  const parsedDifficulty = rawDifficulty === undefined
+    ? null
+    : QuestionDifficultySchema.safeParse(rawDifficulty);
+  if (parsedDifficulty && !parsedDifficulty.success) {
+    throw new InboxImportError(
+      "INVALID_DIFFICULTY",
+      `Unsupported difficulty ${rawDifficulty || "(empty)"}; expected easy, hard, or hell.`,
+    );
+  }
   try {
-    return { mapId: normalizedMap as MapId, ...parseGetpos(text) };
+    return {
+      mapId: normalizedMap as MapId,
+      ...(parsedDifficulty?.success ? { difficulty: parsedDifficulty.data } : {}),
+      ...parseGetpos(text),
+    };
   } catch (error) {
     throw new InboxImportError("INVALID_POSITION", error instanceof Error ? error.message : String(error));
   }

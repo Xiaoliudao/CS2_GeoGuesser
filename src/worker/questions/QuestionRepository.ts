@@ -1,4 +1,10 @@
 import { getRadarLayer, MAP_IDS, type MapId, type RadarLayerId } from "../../shared/maps";
+import {
+  DifficultyPoolSchema,
+  QUESTION_DIFFICULTIES,
+  QuestionDifficultySchema,
+  type QuestionDifficulty,
+} from "../../shared/questionDifficulty";
 import type { MapPoint } from "../../shared/types";
 import type { ServerQuestion } from "../game/questions";
 
@@ -20,6 +26,7 @@ export interface QuestionListItem {
   imageAssetKey: string;
   mapId: MapId;
   layerId: RadarLayerId;
+  difficulty: QuestionDifficulty;
   correctPoint: MapPoint;
   automaticPoint?: MapPoint;
   worldPosition?: { x: number; y: number; z: number };
@@ -37,6 +44,7 @@ interface QuestionRow {
   image_asset_key: string;
   map_id: string;
   layer_id: string;
+  difficulty: string;
   correct_x: number;
   correct_y: number;
   world_x: number | null;
@@ -63,6 +71,10 @@ interface MapCountRow extends CountRow {
   map_id: string;
 }
 
+interface DifficultyCountRow extends CountRow {
+  difficulty: string;
+}
+
 interface CatalogMetaRow {
   version: number;
   updated_at: string;
@@ -78,7 +90,7 @@ export interface QuestionDatabase {
 }
 
 const QUESTION_COLUMNS = `
-  id, image_asset_key, map_id, layer_id, correct_x, correct_y,
+  id, image_asset_key, map_id, layer_id, difficulty, correct_x, correct_y,
   world_x, world_y, world_z, view_pitch, view_yaw, view_roll,
   automatic_x, automatic_y, coordinate_source, enabled, content_hash,
   source_preview_id, created_at, updated_at
@@ -102,6 +114,24 @@ function requireLayerId(mapId: MapId, value: string): RadarLayerId {
   return layer.id;
 }
 
+function requireDifficulty(value: unknown): QuestionDifficulty {
+  const parsed = QuestionDifficultySchema.safeParse(value);
+  if (!parsed.success) throw new Error(`QUESTION_DATABASE_INVALID_DIFFICULTY ${String(value)}`);
+  return parsed.data;
+}
+
+function requireMapPool(mapPool: readonly MapId[]): MapId[] {
+  const normalized = mapPool.map((mapId) => requireMapId(mapId));
+  if (new Set(normalized).size !== normalized.length) throw new Error("QUESTION_DATABASE_DUPLICATE_MAP");
+  return normalized;
+}
+
+function requireDifficultyPool(difficultyPool: readonly QuestionDifficulty[]): QuestionDifficulty[] {
+  const parsed = DifficultyPoolSchema.safeParse(difficultyPool);
+  if (!parsed.success) throw new Error("QUESTION_DATABASE_INVALID_DIFFICULTY_POOL");
+  return parsed.data;
+}
+
 function boundPlaceholders(count: number): string {
   return Array.from({ length: count }, () => "?").join(", ");
 }
@@ -114,6 +144,7 @@ function toServerQuestion(row: QuestionRow): ServerQuestion {
     imageAssetKey: row.image_asset_key,
     correctMapId,
     correctLayerId,
+    difficulty: requireDifficulty(row.difficulty),
     correctPoint: { x: row.correct_x, y: row.correct_y },
     ...(row.automatic_x !== null && row.automatic_y !== null
       ? { automaticPoint: { x: row.automatic_x, y: row.automatic_y } }
@@ -135,6 +166,7 @@ function toListItem(row: QuestionRow): QuestionListItem {
     imageAssetKey: question.imageAssetKey,
     mapId: question.correctMapId,
     layerId: question.correctLayerId,
+    difficulty: question.difficulty,
     correctPoint: question.correctPoint,
     ...(question.automaticPoint ? { automaticPoint: question.automaticPoint } : {}),
     ...(question.worldPosition ? { worldPosition: question.worldPosition } : {}),
@@ -158,32 +190,87 @@ export class QuestionRepository {
 
   async countEnabledForMaps(mapPool: MapId[]): Promise<number> {
     if (mapPool.length === 0) return 0;
-    const placeholders = boundPlaceholders(mapPool.length);
+    return this.countEnabledForSelection(mapPool, QUESTION_DIFFICULTIES);
+  }
+
+  async countEnabledForSelection(
+    mapPool: readonly MapId[],
+    difficultyPool: readonly QuestionDifficulty[],
+  ): Promise<number> {
+    const maps = requireMapPool(mapPool);
+    const difficulties = requireDifficultyPool(difficultyPool);
+    if (maps.length === 0) return 0;
+    const mapPlaceholders = boundPlaceholders(maps.length);
+    const difficultyPlaceholders = boundPlaceholders(difficulties.length);
     const row = await this.database
-      .prepare(`SELECT COUNT(*) AS count FROM questions WHERE enabled = 1 AND map_id IN (${placeholders})`)
-      .bind(...mapPool)
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM questions
+        WHERE enabled = 1
+          AND map_id IN (${mapPlaceholders})
+          AND difficulty IN (${difficultyPlaceholders})
+      `)
+      .bind(...maps, ...difficulties)
       .first<CountRow>();
     return row?.count ?? 0;
   }
 
-  async countEnabledByMap(mapPool: MapId[]): Promise<Partial<Record<MapId, number>>> {
-    if (mapPool.length === 0) return {};
-    const placeholders = boundPlaceholders(mapPool.length);
+  async countEnabledByMap(
+    mapPool: readonly MapId[],
+    difficultyPool: readonly QuestionDifficulty[] = QUESTION_DIFFICULTIES,
+  ): Promise<Partial<Record<MapId, number>>> {
+    const maps = requireMapPool(mapPool);
+    const difficulties = requireDifficultyPool(difficultyPool);
+    if (maps.length === 0) return {};
+    const mapPlaceholders = boundPlaceholders(maps.length);
+    const difficultyPlaceholders = boundPlaceholders(difficulties.length);
     const result = await this.database
       .prepare(`
         SELECT map_id, COUNT(*) AS count
         FROM questions
-        WHERE enabled = 1 AND map_id IN (${placeholders})
+        WHERE enabled = 1
+          AND map_id IN (${mapPlaceholders})
+          AND difficulty IN (${difficultyPlaceholders})
         GROUP BY map_id
       `)
-      .bind(...mapPool)
+      .bind(...maps, ...difficulties)
       .all<MapCountRow>();
-    const byMap: Partial<Record<MapId, number>> = Object.fromEntries(mapPool.map((mapId) => [mapId, 0]));
+    const byMap: Partial<Record<MapId, number>> = Object.fromEntries(maps.map((mapId) => [mapId, 0]));
     for (const row of result.results) {
       const mapId = requireMapId(row.map_id);
-      if (mapPool.includes(mapId)) byMap[mapId] = row.count;
+      if (maps.includes(mapId)) byMap[mapId] = row.count;
     }
     return byMap;
+  }
+
+  async countEnabledByDifficulty(
+    mapPool: readonly MapId[],
+    difficultyPool: readonly QuestionDifficulty[],
+  ): Promise<Partial<Record<QuestionDifficulty, number>>> {
+    const maps = requireMapPool(mapPool);
+    const difficulties = requireDifficultyPool(difficultyPool);
+    if (maps.length === 0) return {};
+    const mapPlaceholders = boundPlaceholders(maps.length);
+    const difficultyPlaceholders = boundPlaceholders(difficulties.length);
+    const result = await this.database
+      .prepare(`
+        SELECT difficulty, COUNT(*) AS count
+        FROM questions
+        WHERE enabled = 1
+          AND map_id IN (${mapPlaceholders})
+          AND difficulty IN (${difficultyPlaceholders})
+        GROUP BY difficulty
+      `)
+      .bind(...maps, ...difficulties)
+      .all<DifficultyCountRow>();
+    const byDifficulty: Partial<Record<QuestionDifficulty, number>> = Object.fromEntries(
+      difficulties.map((difficulty) => [difficulty, 0]),
+    );
+    for (const row of result.results) {
+      const difficulty = requireDifficulty(row.difficulty);
+      if (difficulties.includes(difficulty)) byDifficulty[difficulty] = row.count;
+    }
+    return byDifficulty;
   }
 
   async getCatalogMeta(): Promise<QuestionCatalogMeta> {
@@ -233,18 +320,31 @@ export class QuestionRepository {
   }
 
   async getRandomEnabledForMaps(mapPool: MapId[], count: number): Promise<ServerQuestion[]> {
+    return this.getRandomEnabledForSelection(mapPool, QUESTION_DIFFICULTIES, count);
+  }
+
+  async getRandomEnabledForSelection(
+    mapPool: readonly MapId[],
+    difficultyPool: readonly QuestionDifficulty[],
+    count: number,
+  ): Promise<ServerQuestion[]> {
     const safeCount = Math.max(0, Math.floor(count));
-    if (safeCount === 0 || mapPool.length === 0) return [];
-    const placeholders = boundPlaceholders(mapPool.length);
+    const maps = requireMapPool(mapPool);
+    const difficulties = requireDifficultyPool(difficultyPool);
+    if (safeCount === 0 || maps.length === 0) return [];
+    const mapPlaceholders = boundPlaceholders(maps.length);
+    const difficultyPlaceholders = boundPlaceholders(difficulties.length);
     const result = await this.database
       .prepare(`
         SELECT ${QUESTION_COLUMNS}
         FROM questions
-        WHERE enabled = 1 AND map_id IN (${placeholders})
+        WHERE enabled = 1
+          AND map_id IN (${mapPlaceholders})
+          AND difficulty IN (${difficultyPlaceholders})
         ORDER BY RANDOM()
         LIMIT ?
       `)
-      .bind(...mapPool, safeCount)
+      .bind(...maps, ...difficulties, safeCount)
       .all<QuestionRow>();
     return result.results.map(toServerQuestion);
   }
@@ -262,24 +362,26 @@ export class QuestionRepository {
   }
 
   async publish(input: PublishQuestionInput): Promise<ServerQuestion> {
+    const difficulty = requireDifficulty(input.difficulty);
     const now = new Date().toISOString();
     const createdAt = input.createdAt ?? now;
     const updatedAt = input.updatedAt ?? now;
     const statement = this.database.prepare(`
       INSERT INTO questions (
-        id, image_asset_key, map_id, layer_id, correct_x, correct_y,
+        id, image_asset_key, map_id, layer_id, difficulty, correct_x, correct_y,
         world_x, world_y, world_z, view_pitch, view_yaw, view_roll,
         automatic_x, automatic_y, coordinate_source, enabled, content_hash,
         source_preview_id, created_at, updated_at
       ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-        ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+        ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
       )
     `).bind(
       input.id,
       input.imageAssetKey,
       input.correctMapId,
       input.correctLayerId,
+      difficulty,
       input.correctPoint.x,
       input.correctPoint.y,
       input.worldPosition?.x ?? null,
@@ -298,7 +400,7 @@ export class QuestionRepository {
       updatedAt,
     );
     await this.database.batch([statement, this.database.prepare(BUMP_CATALOG_SQL)]);
-    return input;
+    return { ...input, difficulty };
   }
 
   async updatePoint(questionId: string, point: MapPoint, coordinateSource: ServerQuestion["coordinateSource"]): Promise<boolean> {
@@ -330,6 +432,19 @@ export class QuestionRepository {
           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE id = ?1 AND enabled != ?2
     `).bind(questionId, enabled ? 1 : 0).run();
+    if (result.meta.changes === 0) return false;
+    await this.database.prepare(BUMP_CATALOG_SQL).run();
+    return true;
+  }
+
+  async updateDifficulty(questionId: string, difficultyValue: QuestionDifficulty): Promise<boolean> {
+    const difficulty = requireDifficulty(difficultyValue);
+    const result = await this.database.prepare(`
+      UPDATE questions
+      SET difficulty = ?2,
+          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = ?1 AND difficulty != ?2
+    `).bind(questionId, difficulty).run();
     if (result.meta.changes === 0) return false;
     await this.database.prepare(BUMP_CATALOG_SQL).run();
     return true;

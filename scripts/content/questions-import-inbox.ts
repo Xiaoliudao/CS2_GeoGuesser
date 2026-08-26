@@ -42,6 +42,8 @@ function failureCode(error: unknown): string {
   if (error instanceof InboxImportError) return error.code;
   if (error instanceof Error && error.message.startsWith("MISSING_OVERVIEW")) return "MISSING_OVERVIEW";
   if (error instanceof Error && error.message.startsWith("R2_UPLOAD_FAILED")) return "R2_UPLOAD_FAILED";
+  if (error instanceof Error && error.message.startsWith("SELECT_A_DIFFICULTY")) return "SELECT_A_DIFFICULTY";
+  if (error instanceof Error && error.message.startsWith("INVALID_DIFFICULTY")) return "INVALID_DIFFICULTY";
   return "INVALID_IMAGE";
 }
 
@@ -83,6 +85,7 @@ async function main() {
         sourceImageSha256: hash,
         mapId: metadata.mapId,
         layerId: automaticLayer.id as RadarLayerId,
+        ...(metadata.difficulty ? { difficulty: metadata.difficulty } : {}),
         worldPosition: metadata.worldPosition,
         ...(metadata.viewAngle ? { viewAngle: metadata.viewAngle } : {}),
         automaticPoint,
@@ -92,7 +95,7 @@ async function main() {
       };
 
       valid += 1;
-      console.log(`VALID ${pair.relativeSourcePath} map=${metadata.mapId} world=${metadata.worldPosition.x},${metadata.worldPosition.y},${metadata.worldPosition.z} layer=${automaticLayer.id} point=${automaticPoint.x.toFixed(6)},${automaticPoint.y.toFixed(6)}`);
+      console.log(`VALID ${pair.relativeSourcePath} map=${metadata.mapId} difficulty=${metadata.difficulty ?? "UNSET"} world=${metadata.worldPosition.x},${metadata.worldPosition.y},${metadata.worldPosition.z} layer=${automaticLayer.id} point=${automaticPoint.x.toFixed(6)},${automaticPoint.y.toFixed(6)}`);
       if (dryRun) {
         copyQuestionPreviewAsset(pair.imagePath, publicDevAssetsRoot, pair.relativeSourcePath);
         previewQuestions.push(previewQuestion);

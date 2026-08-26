@@ -29,6 +29,7 @@ content/generated/upload-manifest.json
 content/generated/pending-questions.json
 content/generated/question-preview.json
 content/generated/question-overrides.json
+content/generated/question-difficulty-overrides.json
 content/generated/prepared-questions/
 public/__dev_assets__/
 backups/

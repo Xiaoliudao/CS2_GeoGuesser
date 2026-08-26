@@ -6,10 +6,12 @@ import { scoreGuess } from "../game/scoring";
 import {
   advanceSoloRound,
   createInitialSoloState,
+  migrateStoredSoloState,
   prioritizeFreshQuestions,
   reconcileSoloState,
   revealSoloHint,
   startSoloRound,
+  storedSoloStateNeedsMigration,
   submitSoloGuess,
   toPublicSoloState,
 } from "./soloState";
@@ -22,6 +24,7 @@ function question(
   return {
     id,
     imageAssetKey: `questions/${id}.webp`,
+    difficulty: "hard",
     correctMapId: mapId,
     correctLayerId: layerId,
     correctPoint: { x: 0.625, y: 0.375 },
@@ -197,6 +200,20 @@ describe("Solo server state", () => {
     expect(publicState.hintMapId).toBe("mirage");
     expect(publicState.roundStartedAt).toBe(70_000);
     expect(publicState.roundEndsAt).toBe(90_000);
+  });
+
+  it("migrates legacy stored settings to all difficulties and legacy snapshots to hard", () => {
+    const legacy = JSON.parse(JSON.stringify(state())) as ReturnType<typeof state>;
+    (legacy as unknown as { schemaVersion: number }).schemaVersion = 1;
+    delete (legacy.settings as unknown as { difficultyPool?: unknown }).difficultyPool;
+    delete (legacy.questionSnapshot[0] as unknown as { difficulty?: unknown }).difficulty;
+
+    expect(storedSoloStateNeedsMigration(legacy)).toBe(true);
+    const migrated = migrateStoredSoloState(legacy);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.settings.difficultyPool).toEqual(["easy", "hard", "hell"]);
+    expect(migrated.questionSnapshot[0].difficulty).toBe("hard");
+    expect(storedSoloStateNeedsMigration(migrated)).toBe(false);
   });
 
   it("prepares the next unique question and finishes only after its result is acknowledged", () => {

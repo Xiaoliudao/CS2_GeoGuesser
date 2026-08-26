@@ -1,12 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ManifestQuestion } from "./question-manifest.ts";
+import { QuestionDifficultySchema, type QuestionDifficulty } from "../../src/shared/questionDifficulty.ts";
 import {
   getRemoteCatalogMeta,
   insertRemoteQuestion,
   listRemoteQuestions,
   projectRoot,
   setRemoteQuestionEnabled,
+  setRemoteQuestionDifficulty,
   updateRemoteQuestionPoint,
   verifyRemoteR2Object,
 } from "./question-d1-admin.ts";
@@ -31,6 +33,7 @@ function printQuestionRows(): void {
       `id=${question.id}`,
       `map=${question.map_id}`,
       `layer=${question.layer_id}`,
+      `difficulty=${question.difficulty}`,
       `point=${question.correct_x},${question.correct_y}`,
       `key=${question.image_asset_key}`,
       `source=${question.source_preview_id ?? "-"}`,
@@ -40,7 +43,8 @@ function printQuestionRows(): void {
 }
 
 function migrateLegacy(): void {
-  const manifest = readJson<ManifestQuestion[]>(manifestPath, []);
+  type LegacyManifestQuestion = Omit<ManifestQuestion, "difficulty"> & { difficulty?: unknown };
+  const manifest = readJson<LegacyManifestQuestion[]>(manifestPath, []);
   const records = readJson<ImportRecord[]>(recordsPath, []);
   if (manifest.length === 0) throw new Error("LEGACY_MANIFEST_EMPTY");
 
@@ -50,9 +54,13 @@ function migrateLegacy(): void {
     const record = records.find((candidate) => candidate.questionId === question.id);
     if (!record) throw new Error(`LEGACY_IMPORT_RECORD_MISSING ${question.id}`);
     const imageAssetKey = `questions/${question.imageAssetId}.webp`;
+    const parsedDifficulty = question.difficulty === undefined
+      ? { success: true as const, data: "hard" as QuestionDifficulty }
+      : QuestionDifficultySchema.safeParse(question.difficulty);
+    if (!parsedDifficulty.success) throw new Error(`INVALID_DIFFICULTY ${question.id}`);
     verifyRemoteR2Object(bucket, imageAssetKey);
     const result = insertRemoteQuestion({
-      question,
+      question: { ...question, difficulty: parsedDifficulty.data },
       imageAssetKey,
       contentHash: record.sourceImageSha256,
       sourcePreviewId: record.sourceId,
@@ -107,12 +115,20 @@ function updatePoint(): void {
   console.log(`QUESTION_POINT_UPDATED id=${questionId} point=${x},${y}`);
 }
 
+function updateDifficulty(): void {
+  const questionId = requireArgument(3, "question_id");
+  const difficulty = QuestionDifficultySchema.parse(requireArgument(4, "difficulty").trim().toLowerCase());
+  const changed = setRemoteQuestionDifficulty(questionId, difficulty);
+  console.log(`QUESTION_DIFFICULTY_UPDATED id=${questionId} difficulty=${difficulty} changed=${changed}`);
+}
+
 function main(): void {
   const command = requireArgument(2, "command");
   if (command === "list") return printQuestionRows();
   if (command === "migrate") return migrateLegacy();
   if (command === "export") return exportQuestions();
   if (command === "update-point") return updatePoint();
+  if (command === "set-difficulty") return updateDifficulty();
   if (command === "enable" || command === "disable") {
     const questionId = requireArgument(3, "question_id");
     const changed = setRemoteQuestionEnabled(questionId, command === "enable");

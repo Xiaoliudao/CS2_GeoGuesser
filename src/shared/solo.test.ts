@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAP_IDS } from "./maps";
+import { QUESTION_DIFFICULTIES } from "./questionDifficulty";
 import { DEFAULT_SOLO_SETTINGS, SoloGuessSchema, SoloSettingsSchema } from "./solo";
 
 describe("solo settings", () => {
@@ -8,6 +9,7 @@ describe("solo settings", () => {
       totalRounds: 5,
       roundDurationSeconds: 20,
       mapPool: [...MAP_IDS],
+      difficultyPool: [...QUESTION_DIFFICULTIES],
     });
     expect(SoloSettingsSchema.safeParse(DEFAULT_SOLO_SETTINGS).success).toBe(true);
   });
@@ -17,12 +19,20 @@ describe("solo settings", () => {
       totalRounds: 10,
       roundDurationSeconds: 30,
       mapPool: ["mirage", "nuke"],
+      difficultyPool: ["easy", "hell"],
     }).success).toBe(true);
     expect(SoloSettingsSchema.safeParse({
       totalRounds: 5,
       roundDurationSeconds: 20,
       mapPool: ["mirage"],
+      difficultyPool: ["hard"],
       serverRegion: "asia",
+    }).success).toBe(false);
+    expect(SoloSettingsSchema.safeParse({
+      totalRounds: 5,
+      roundDurationSeconds: 20,
+      mapPool: ["mirage"],
+      difficultyPool: [],
     }).success).toBe(false);
   });
 

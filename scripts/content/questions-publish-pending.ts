@@ -3,24 +3,33 @@ import {
   loadPendingQuestions,
   previewIdentityAliases,
   publishPreviewQuestion,
+  requireQuestionDifficultyForPublish,
 } from "./question-workflow";
 
 async function publishValidatedQuestions(dryRun: boolean): Promise<void> {
   const previews = listQaPreviewQuestions();
   const previouslyPublished = previews.filter((question) => question.status === "published").length;
-  const candidates = previews.filter((question) => question.status !== "published");
   let published = 0;
   let skipped = previouslyPublished;
   let remaining = 0;
+  let validCandidates = 0;
 
   for (const preview of previews) {
     if (preview.status === "published") {
       console.log(`SKIPPED ${preview.relativeSourcePath} DUPLICATE_OR_ALREADY_PUBLISHED`);
       continue;
     }
+    try {
+      requireQuestionDifficultyForPublish(preview.difficulty);
+      validCandidates += 1;
+    } catch (error) {
+      remaining += 1;
+      console.log(`PUBLISH_PENDING ${preview.relativeSourcePath} ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
     if (dryRun) {
       console.log(
-        `READY ${preview.relativeSourcePath} map=${preview.mapId} point=${preview.finalPoint.x},${preview.finalPoint.y}`,
+        `READY ${preview.relativeSourcePath} map=${preview.mapId} difficulty=${preview.difficulty} point=${preview.finalPoint.x},${preview.finalPoint.y}`,
       );
       remaining += 1;
       continue;
@@ -41,7 +50,7 @@ async function publishValidatedQuestions(dryRun: boolean): Promise<void> {
   console.log([
     "QUESTION_PUBLISH_COMPLETE",
     `Published previously: ${previouslyPublished}`,
-    `New valid questions: ${candidates.length}`,
+    `New valid questions: ${validCandidates}`,
     `Published: ${published}`,
     `Skipped duplicate/already-published: ${skipped}`,
     `Remaining: ${remaining}`,
@@ -56,11 +65,18 @@ async function publishLegacyPendingQuestions(dryRun: boolean): Promise<void> {
   let remaining = 0;
   for (const entry of pending) {
     const preview = previews.find((question) => previewIdentityAliases(question, previews).includes(entry.sourceId));
+    try {
+      requireQuestionDifficultyForPublish(entry.question.difficulty);
+    } catch (error) {
+      remaining += 1;
+      console.log(`PUBLISH_PENDING_R2 source=${entry.sourceId} ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
     if (dryRun) {
       const point = preview?.finalPoint ?? entry.question.correctPoint;
       const coordinateSource = preview?.manualOverride ? "manual-override" : "world-conversion";
       console.log(
-        `PENDING source=${entry.sourceId} question=${entry.question.id} point=${point.x},${point.y} coordinateSource=${coordinateSource}`,
+        `PENDING source=${entry.sourceId} question=${entry.question.id} difficulty=${entry.question.difficulty} point=${point.x},${point.y} coordinateSource=${coordinateSource}`,
       );
       remaining += 1;
       continue;

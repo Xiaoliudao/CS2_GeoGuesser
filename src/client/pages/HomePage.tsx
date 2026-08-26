@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { nicknameSchema } from "../../shared/schemas";
 import { MAP_IDS, type MapId } from "../../shared/maps";
+import type { QuestionDifficulty } from "../../shared/questionDifficulty";
 import {
   DEFAULT_ROOM_SETTINGS,
   RoomSettingsSchema,
@@ -12,6 +13,7 @@ import { navigate } from "../App";
 import {
   MATCH_SETTINGS_AVAILABILITY_ID,
   MATCH_SETTINGS_DETAILS_ID,
+  MATCH_SETTINGS_DIFFICULTY_POOL_ID,
   MATCH_SETTINGS_DURATION_INPUT_ID,
   MATCH_SETTINGS_MAP_POOL_ID,
   MATCH_SETTINGS_ROUNDS_INPUT_ID,
@@ -27,6 +29,8 @@ const CREATE_ROOM_ERROR_MESSAGES: Record<string, string> = {
   INVALID_ROUND_DURATION: "Round time must be a whole number from 10 to 120 seconds.",
   EMPTY_MAP_POOL: "Select at least one map.",
   INVALID_MAP_ID: "The map pool contains an invalid or duplicate map.",
+  EMPTY_DIFFICULTY_POOL: "Select at least one difficulty.",
+  INVALID_DIFFICULTY: "The difficulty pool contains an invalid or duplicate difficulty.",
   INVALID_SERVER_REGION: "The server region selection is invalid.",
 };
 
@@ -36,6 +40,7 @@ function settingsTargetForErrorCode(errorCode: string): string {
   if (errorCode === "INVALID_ROUND_COUNT") return MATCH_SETTINGS_ROUNDS_INPUT_ID;
   if (errorCode === "INVALID_ROUND_DURATION") return MATCH_SETTINGS_DURATION_INPUT_ID;
   if (errorCode === "EMPTY_MAP_POOL" || errorCode === "INVALID_MAP_ID") return MATCH_SETTINGS_MAP_POOL_ID;
+  if (errorCode === "EMPTY_DIFFICULTY_POOL" || errorCode === "INVALID_DIFFICULTY") return MATCH_SETTINGS_DIFFICULTY_POOL_ID;
   if (errorCode === "INVALID_SERVER_REGION") return MATCH_SETTINGS_REGION_ID;
   return MATCH_SETTINGS_DETAILS_ID;
 }
@@ -52,9 +57,10 @@ export function HomePage() {
   const [roundsInput, setRoundsInput] = useState(String(DEFAULT_ROOM_SETTINGS.totalRounds));
   const [durationInput, setDurationInput] = useState(String(DEFAULT_ROOM_SETTINGS.roundDurationSeconds));
   const [mapPool, setMapPool] = useState<MapId[]>([...DEFAULT_ROOM_SETTINGS.mapPool]);
+  const [difficultyPool, setDifficultyPool] = useState<QuestionDifficulty[]>([...DEFAULT_ROOM_SETTINGS.difficultyPool]);
   const [serverRegion, setServerRegion] = useState<ServerRegion>(DEFAULT_ROOM_SETTINGS.serverRegion);
   const [availability, setAvailability] = useState<QuestionAvailability | null>(null);
-  const [availabilityMapPoolKey, setAvailabilityMapPoolKey] = useState("");
+  const [availabilityFilterKey, setAvailabilityFilterKey] = useState("");
   const [checkingAvailability, setCheckingAvailability] = useState(true);
   const [availabilityError, setAvailabilityError] = useState("");
 
@@ -62,10 +68,11 @@ export function HomePage() {
     totalRounds: Number(roundsInput),
     roundDurationSeconds: Number(durationInput),
     mapPool,
+    difficultyPool,
     serverRegion,
-  }), [durationInput, mapPool, roundsInput, serverRegion]);
-  const mapPoolKey = mapPool.join(",");
-  const availabilityIsCurrent = availabilityMapPoolKey === mapPoolKey;
+  }), [difficultyPool, durationInput, mapPool, roundsInput, serverRegion]);
+  const filterKey = `${mapPool.join(",")}|${difficultyPool.join(",")}`;
+  const availabilityIsCurrent = availabilityFilterKey === filterKey;
   const currentAvailability = availabilityIsCurrent ? availability : null;
 
   useEffect(() => {
@@ -75,14 +82,14 @@ export function HomePage() {
   useEffect(() => {
     if (flow !== "multiplayer") {
       setAvailability(null);
-      setAvailabilityMapPoolKey("");
+      setAvailabilityFilterKey("");
       setAvailabilityError("");
       setCheckingAvailability(false);
       return;
     }
-    if (mapPool.length === 0) {
+    if (mapPool.length === 0 || difficultyPool.length === 0) {
       setAvailability(null);
-      setAvailabilityMapPoolKey("");
+      setAvailabilityFilterKey("");
       setAvailabilityError("");
       setCheckingAvailability(false);
       return;
@@ -94,14 +101,14 @@ export function HomePage() {
     void fetch("/api/questions/availability", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mapPool }),
+      body: JSON.stringify({ mapPool, difficultyPool }),
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) throw new Error("Question bank unavailable");
       const data = await response.json() as QuestionAvailability;
       if (!controller.signal.aborted) {
         setAvailability(data);
-        setAvailabilityMapPoolKey(mapPool.join(","));
+        setAvailabilityFilterKey(`${mapPool.join(",")}|${difficultyPool.join(",")}`);
       }
     }).catch((requestError: unknown) => {
       if (!controller.signal.aborted) {
@@ -111,7 +118,7 @@ export function HomePage() {
       if (!controller.signal.aborted) setCheckingAvailability(false);
     });
     return () => controller.abort();
-  }, [flow, mapPool]);
+  }, [difficultyPool, flow, mapPool]);
 
   const availableQuestions = currentAvailability?.availableQuestions ?? 0;
   const settingsAreAvailable = settingsResult.success
@@ -140,7 +147,7 @@ export function HomePage() {
     if (!creatorNickname) return;
     setSettingsPanelError("");
     if (!settingsResult.success) {
-      setError("Enter valid match settings: 1–50 rounds, 10–120 seconds, and at least one map.");
+      setError("Enter valid match settings: 1–50 rounds, 10–120 seconds, at least one map, and at least one difficulty.");
       const issuePath = settingsResult.error.issues[0]?.path[0];
       revealSettingsIssue(
         issuePath === "totalRounds"
@@ -149,6 +156,8 @@ export function HomePage() {
             ? MATCH_SETTINGS_DURATION_INPUT_ID
             : issuePath === "mapPool"
               ? MATCH_SETTINGS_MAP_POOL_ID
+              : issuePath === "difficultyPool"
+                ? MATCH_SETTINGS_DIFFICULTY_POOL_ID
               : issuePath === "serverRegion"
                 ? MATCH_SETTINGS_REGION_ID
                 : MATCH_SETTINGS_DETAILS_ID,
@@ -156,7 +165,7 @@ export function HomePage() {
       return;
     }
     if (checkingAvailability || !availabilityIsCurrent) {
-      setError("Still checking the selected map pool. Please try again in a moment.");
+      setError("Still checking the selected map and difficulty pool. Please try again in a moment.");
       revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
       return;
     }
@@ -166,7 +175,7 @@ export function HomePage() {
       return;
     }
     if (settingsResult.data.totalRounds > availableQuestions) {
-      setError(`Only ${availableQuestions} questions are available for the selected map pool.`);
+      setError(`Only ${availableQuestions} questions are available for the selected map and difficulty pool.`);
       revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
       return;
     }
@@ -191,8 +200,8 @@ export function HomePage() {
         if (responseData?.error === "NOT_ENOUGH_QUESTIONS") {
           const currentAvailable = responseData.availableQuestions ?? 0;
           setAvailability((current) => current ? { ...current, availableQuestions: currentAvailable } : current);
-          setAvailabilityMapPoolKey(mapPoolKey);
-          setError(`Only ${currentAvailable} questions are available for the selected map pool.`);
+          setAvailabilityFilterKey(filterKey);
+          setError(`Only ${currentAvailable} questions are available for the selected map and difficulty pool.`);
           revealSettingsIssue(MATCH_SETTINGS_AVAILABILITY_ID);
           return;
         }
@@ -352,6 +361,7 @@ export function HomePage() {
                 roundsInput={roundsInput}
                 durationInput={durationInput}
                 mapPool={mapPool}
+                difficultyPool={difficultyPool}
                 serverRegion={serverRegion}
                 availability={currentAvailability}
                 checkingAvailability={checkingAvailability || !availabilityIsCurrent}
@@ -369,6 +379,10 @@ export function HomePage() {
                   setSettingsPanelError("");
                   setMapPool(MAP_IDS.filter((mapId) => nextMapPool.includes(mapId)));
                 }}
+                onDifficultyPoolChange={(nextDifficultyPool) => {
+                  setSettingsPanelError("");
+                  setDifficultyPool(nextDifficultyPool);
+                }}
                 onServerRegionChange={(region) => {
                   setSettingsPanelError("");
                   setServerRegion(region);
@@ -379,7 +393,7 @@ export function HomePage() {
                 className="primary-button create-room-button"
                 type="button"
                 onClick={createRoom}
-                disabled={busy}
+                disabled={busy || !settingsAreAvailable}
                 aria-disabled={busy || !settingsAreAvailable}
               >
                 {busy ? "CONNECTING…" : "CREATE MULTIPLAYER ROOM"}

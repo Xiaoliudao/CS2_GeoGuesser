@@ -53,6 +53,7 @@ export function roomInvitePreview({
       totalRounds: settings.totalRounds,
       roundDurationSeconds: settings.roundDurationSeconds,
       mapCount: settings.mapPool.length,
+      difficultyPool: [...settings.difficultyPool],
       serverRegion: settings.serverRegion,
     },
   };

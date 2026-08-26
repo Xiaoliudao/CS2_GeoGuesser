@@ -140,7 +140,10 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
 
   let availableQuestions: number;
   try {
-    availableQuestions = await new QuestionRepository(env.QUESTIONS_DB).countEnabledForMaps(parsed.data.settings.mapPool);
+    availableQuestions = await new QuestionRepository(env.QUESTIONS_DB).countEnabledForSelection(
+      parsed.data.settings.mapPool,
+      parsed.data.settings.difficultyPool,
+    );
   } catch (error) {
     return questionDatabaseUnavailable("create-room-availability", error);
   }
@@ -178,12 +181,13 @@ async function questionAvailability(request: Request, env: Env): Promise<Respons
   if (!parsed.success) return invalidRoomSettingsResponse(parsed.error);
   try {
     const repository = new QuestionRepository(env.QUESTIONS_DB);
-    const [availableQuestions, byMap] = await Promise.all([
-      repository.countEnabledForMaps(parsed.data.mapPool),
-      repository.countEnabledByMap(parsed.data.mapPool),
+    const [availableQuestions, byMap, byDifficulty] = await Promise.all([
+      repository.countEnabledForSelection(parsed.data.mapPool, parsed.data.difficultyPool),
+      repository.countEnabledByMap(parsed.data.mapPool, parsed.data.difficultyPool),
+      repository.countEnabledByDifficulty(parsed.data.mapPool, parsed.data.difficultyPool),
     ]);
     return Response.json(
-      { availableQuestions, byMap },
+      { availableQuestions, byMap, byDifficulty },
       { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } },
     );
   } catch (error) {

@@ -123,6 +123,14 @@ input:focus, select:focus { border-color: var(--orange); box-shadow: 0 0 0 2px r
 .map-pool-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
 .map-pool-grid button { min-height: 42px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; }
 .map-pool-grid button b { color: var(--orange-bright); }
+.difficulty-pool-selector > .setting-group-label { display: block; }
+.difficulty-pool-selector > small { display: block; margin-top: 7px; color: #6f7d83; font-size: 8px; line-height: 1.4; }
+.difficulty-pool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.difficulty-pool-grid button { --difficulty-accent: var(--orange); min-height: 42px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #929ea3; border: 1px solid #354249; background: #0c1215; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.difficulty-pool-grid button.difficulty-easy { --difficulty-accent: var(--lime); }
+.difficulty-pool-grid button.difficulty-hell { --difficulty-accent: #ef6849; }
+.difficulty-pool-grid button.is-selected { color: #fff; border-color: var(--difficulty-accent); background: color-mix(in srgb, var(--difficulty-accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--difficulty-accent); }
+.difficulty-pool-grid button b { color: var(--difficulty-accent); }
 .question-availability { min-height: 50px; margin-top: 16px; padding: 11px 13px; display: flex; align-items: flex-start; justify-content: center; flex-direction: column; border: 1px solid #496832; background: rgba(128,173,69,.08); }
 .question-availability strong, .question-availability span { display: block; }
 .question-availability strong { color: #b9ee7c; font-size: 10px; letter-spacing: .11em; }
@@ -212,7 +220,7 @@ input:focus, select:focus { border-color: var(--orange); box-shadow: 0 0 0 2px r
 .lobby-player b { font-size: 10px; letter-spacing: .12em; }
 .lobby-player b.ready { color: var(--lime); }
 .lobby-player b.not-ready { color: #707d82; }
-.lobby-settings { margin: 0 0 22px; display: grid; grid-template-columns: 1fr 1fr 1fr 2fr; gap: 1px; border: 1px solid #29353a; background: #29353a; }
+.lobby-settings { margin: 0 0 22px; display: grid; grid-template-columns: repeat(4, 1fr) 2fr; gap: 1px; border: 1px solid #29353a; background: #29353a; }
 .lobby-settings > div { min-width: 0; padding: 12px 14px; background: #0b1114; }
 .lobby-settings span, .lobby-settings strong { display: block; }
 .lobby-settings span { color: #6f7c82; font-size: 7px; font-weight: 800; letter-spacing: .14em; }

@@ -1,5 +1,11 @@
 import { MAPS, type MapId } from "../../shared/maps";
+import {
+  QUESTION_DIFFICULTIES,
+  QUESTION_DIFFICULTY_LABELS,
+  type QuestionDifficulty,
+} from "../../shared/questionDifficulty";
 import type { QuestionAvailability, ServerRegion } from "../../shared/roomSettings";
+import { DifficultyPoolSelector } from "./DifficultyPoolSelector";
 
 const ROUND_PRESETS = [5, 10, 15, 20] as const;
 const DURATION_PRESETS = [15, 20, 30, 45] as const;
@@ -10,6 +16,7 @@ export const MATCH_SETTINGS_ROUNDS_INPUT_ID = "match-settings-rounds-input";
 export const MATCH_SETTINGS_DURATION_ID = "match-settings-duration";
 export const MATCH_SETTINGS_DURATION_INPUT_ID = "match-settings-duration-input";
 export const MATCH_SETTINGS_MAP_POOL_ID = "match-settings-map-pool";
+export const MATCH_SETTINGS_DIFFICULTY_POOL_ID = "match-settings-difficulty-pool";
 export const MATCH_SETTINGS_REGION_ID = "match-settings-region";
 export const MATCH_SETTINGS_AVAILABILITY_ID = "match-settings-availability";
 
@@ -18,6 +25,7 @@ interface MatchSettingsPanelProps {
   roundsInput: string;
   durationInput: string;
   mapPool: MapId[];
+  difficultyPool: QuestionDifficulty[];
   serverRegion: ServerRegion;
   availability: QuestionAvailability | null;
   checkingAvailability: boolean;
@@ -26,6 +34,7 @@ interface MatchSettingsPanelProps {
   onRoundsChange: (value: string) => void;
   onDurationChange: (value: string) => void;
   onMapPoolChange: (mapPool: MapId[]) => void;
+  onDifficultyPoolChange: (difficultyPool: QuestionDifficulty[]) => void;
   onServerRegionChange: (region: ServerRegion) => void;
 }
 
@@ -33,8 +42,9 @@ export function formatMatchSettingsSummary({
   roundsInput,
   durationInput,
   mapPool,
+  difficultyPool,
   serverRegion,
-}: Pick<MatchSettingsPanelProps, "roundsInput" | "durationInput" | "mapPool" | "serverRegion">): string {
+}: Pick<MatchSettingsPanelProps, "roundsInput" | "durationInput" | "mapPool" | "difficultyPool" | "serverRegion">): string {
   const parsedRounds = Number(roundsInput);
   const parsedDuration = Number(durationInput);
   const rounds = roundsInput !== "" && Number.isInteger(parsedRounds) ? parsedRounds : "—";
@@ -46,11 +56,18 @@ export function formatMatchSettingsSummary({
   } else if (mapPool.length === 1) {
     mapSummary = MAPS.find((map) => map.id === mapPool[0])?.name.toUpperCase() ?? "1 MAP";
   }
+  const canonicalDifficulties = QUESTION_DIFFICULTIES.filter((difficulty) => difficultyPool.includes(difficulty));
+  const difficultySummary = canonicalDifficulties.length === QUESTION_DIFFICULTIES.length
+    ? "ALL DIFFICULTIES"
+    : canonicalDifficulties.length > 0
+      ? canonicalDifficulties.map((difficulty) => QUESTION_DIFFICULTY_LABELS[difficulty]).join(" + ")
+      : "NO DIFFICULTY";
 
   return [
     `${rounds} ROUNDS`,
     `${duration} SEC`,
     mapSummary,
+    difficultySummary,
     serverRegion === "asia" ? "ASIA" : null,
   ].filter((part): part is string => part !== null).join(" · ");
 }
@@ -60,6 +77,7 @@ export function MatchSettingsPanel({
   roundsInput,
   durationInput,
   mapPool,
+  difficultyPool,
   serverRegion,
   availability,
   checkingAvailability,
@@ -68,6 +86,7 @@ export function MatchSettingsPanel({
   onRoundsChange,
   onDurationChange,
   onMapPoolChange,
+  onDifficultyPoolChange,
   onServerRegionChange,
 }: MatchSettingsPanelProps) {
   const selectedRounds = Number(roundsInput);
@@ -78,9 +97,14 @@ export function MatchSettingsPanel({
   const invalidRounds = roundsInput === "" || !Number.isInteger(selectedRounds) || selectedRounds < 1 || selectedRounds > 50;
   const invalidDuration = durationInput === "" || !Number.isInteger(selectedDuration) || selectedDuration < 10 || selectedDuration > 120;
   const notEnoughQuestions = !checkingAvailability && availability !== null && !invalidRounds && selectedRounds > availableQuestions;
-  const hasAvailabilityError = Boolean(availabilityError) || mapPool.length === 0 || invalidRounds || invalidDuration || notEnoughQuestions;
+  const hasAvailabilityError = Boolean(availabilityError)
+    || mapPool.length === 0
+    || difficultyPool.length === 0
+    || invalidRounds
+    || invalidDuration
+    || notEnoughQuestions;
   const showCompactNote = hasAvailabilityError || checkingAvailability;
-  const summary = formatMatchSettingsSummary({ roundsInput, durationInput, mapPool, serverRegion });
+  const summary = formatMatchSettingsSummary({ roundsInput, durationInput, mapPool, difficultyPool, serverRegion });
   const toggleMap = (mapId: MapId) => {
     onMapPoolChange(
       mapPool.includes(mapId)
@@ -91,6 +115,8 @@ export function MatchSettingsPanel({
 
   const availabilityContent = mapPool.length === 0
     ? <strong>SELECT AT LEAST ONE MAP</strong>
+    : difficultyPool.length === 0
+      ? <strong>SELECT AT LEAST ONE DIFFICULTY</strong>
     : invalidRounds
       ? <strong>QUESTIONS MUST BE A WHOLE NUMBER FROM 1 TO 50</strong>
       : invalidDuration
@@ -101,7 +127,7 @@ export function MatchSettingsPanel({
             ? <strong>{availabilityError}</strong>
             : notEnoughQuestions
               ? <><strong>ONLY {availableQuestions} QUESTIONS ARE AVAILABLE</strong><span>Requested: {selectedRounds}</span></>
-              : <><strong>{availableQuestions} QUESTIONS AVAILABLE</strong><span>Across {mapPool.length} selected map{mapPool.length === 1 ? "" : "s"}</span></>;
+              : <><strong>{availableQuestions} QUESTIONS AVAILABLE</strong><span>Across {mapPool.length} selected map{mapPool.length === 1 ? "" : "s"} and {difficultyPool.length} difficult{difficultyPool.length === 1 ? "y" : "ies"}</span></>;
 
   return (
     <section className={`match-settings ${expanded ? "is-expanded" : ""}`} aria-labelledby="match-settings-title">
@@ -195,6 +221,13 @@ export function MatchSettingsPanel({
             />
           </label>
         </fieldset>
+
+        <DifficultyPoolSelector
+          id={MATCH_SETTINGS_DIFFICULTY_POOL_ID}
+          difficultyPool={difficultyPool}
+          ariaDescribedBy={MATCH_SETTINGS_AVAILABILITY_ID}
+          onChange={onDifficultyPoolChange}
+        />
 
         <div
           id={MATCH_SETTINGS_MAP_POOL_ID}

@@ -1,5 +1,10 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { MAP_IDS } from "../../shared/maps";
+import {
+  QUESTION_DIFFICULTIES,
+  QUESTION_DIFFICULTY_LABELS,
+  type QuestionDifficulty,
+} from "../../shared/questionDifficulty";
 import { RoomInvitePreviewSchema, type RoomInvitePreview, type RoomInviteUnavailableReason } from "../../shared/roomInvite";
 import { nicknameSchema, roomCodeSchema } from "../../shared/schemas";
 import { navigate } from "../App";
@@ -17,6 +22,15 @@ const BLOCKED_COPY: Record<RoomInviteUnavailableReason, { title: string; message
   in_progress: { title: "MATCH IN PROGRESS", message: "This match has already started." },
   expired: { title: "INVITE EXPIRED", message: "This match has finished and the room invite is no longer active." },
 };
+
+function difficultyPoolSummary(difficultyPool: QuestionDifficulty[]): string {
+  return difficultyPool.length === QUESTION_DIFFICULTIES.length
+    ? "ALL DIFFICULTIES"
+    : QUESTION_DIFFICULTIES
+      .filter((difficulty) => difficultyPool.includes(difficulty))
+      .map((difficulty) => QUESTION_DIFFICULTY_LABELS[difficulty])
+      .join(" + ");
+}
 
 export function InviteJoinPage({ roomCode: rawRoomCode }: { roomCode: string }) {
   const parsedRoomCode = useMemo(() => roomCodeSchema.safeParse(rawRoomCode), [rawRoomCode]);
@@ -113,6 +127,7 @@ export function InviteJoinPage({ roomCode: rawRoomCode }: { roomCode: string }) 
             <span>{settings.totalRounds} ROUNDS</span>
             <span>{settings.roundDurationSeconds} SEC</span>
             <span>{settings.mapCount === MAP_IDS.length ? "ALL MAPS" : `${settings.mapCount} MAPS`}</span>
+            <span>{difficultyPoolSummary(settings.difficultyPool)}</span>
             <span>{settings.serverRegion === "asia" ? "ASIA" : "AUTO"}</span>
           </div>
           <form className="invite-join-form" onSubmit={(event) => void submit(event)}>

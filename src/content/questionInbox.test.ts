@@ -75,8 +75,16 @@ describe("question inbox", () => {
     expect(parseInboxMetadata("map: de_nuke\nsetpos_exact 1 2 -600").mapId).toBe("nuke");
   });
 
+  it("parses an optional canonical difficulty without breaking legacy metadata", () => {
+    expect(parseInboxMetadata("map=mirage\ndifficulty=HELL\nsetpos_exact -1 2 -3").difficulty).toBe("hell");
+    expect(parseInboxMetadata("map=mirage\nsetpos_exact -1 2 -3").difficulty).toBeUndefined();
+  });
+
   it("assigns stable failure codes to bad map and position metadata", () => {
     expect(codeFrom(() => parseInboxMetadata("map=office\nsetpos_exact 1 2 3"))).toBe("INVALID_MAP");
+    expect(codeFrom(() => parseInboxMetadata("map=mirage\ndifficulty=medium\nsetpos_exact 1 2 3"))).toBe("INVALID_DIFFICULTY");
+    expect(codeFrom(() => parseInboxMetadata("map=mirage\ndifficulty=\nsetpos_exact 1 2 3"))).toBe("INVALID_DIFFICULTY");
+    expect(codeFrom(() => parseInboxMetadata("map=mirage\ndifficulty=easy\ndifficulty=hell\nsetpos_exact 1 2 3"))).toBe("INVALID_DIFFICULTY");
     expect(codeFrom(() => parseInboxMetadata("map=mirage\nsetpos_exact 1 nope 3"))).toBe("INVALID_POSITION");
     expect(codeFrom(() => parseInboxMetadata("setpos_exact 1 2 3"))).toBe("MISSING_METADATA");
   });

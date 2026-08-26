@@ -1,4 +1,5 @@
 import type { MapId, RadarLayerId } from "./maps";
+import type { QuestionDifficulty } from "./questionDifficulty";
 import type { ViewAngle, WorldPosition } from "./radarCoordinates";
 import type { MapPoint } from "./types";
 
@@ -10,6 +11,7 @@ export interface AdminQuestion {
   id: string;
   mapId: MapId;
   layerId: RadarLayerId;
+  difficulty: QuestionDifficulty;
   correctPoint: MapPoint;
   automaticPoint?: MapPoint;
   worldPosition?: WorldPosition;

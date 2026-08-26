@@ -15,10 +15,12 @@ import {
   SOLO_SESSION_TTL_MS,
   advanceSoloRound,
   createInitialSoloState,
+  migrateStoredSoloState,
   prioritizeFreshQuestions,
   reconcileSoloState,
   revealSoloHint,
   startSoloRound,
+  storedSoloStateNeedsMigration,
   submitSoloGuess,
   toPublicSoloState,
   type InternalSoloState,
@@ -55,9 +57,15 @@ export class SoloSession extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ready = ctx.blockConcurrencyWhile(async () => {
-      this.state = await ctx.storage.get<InternalSoloState>(SOLO_STATE_KEY) ?? null;
+      const stored = await ctx.storage.get<InternalSoloState>(SOLO_STATE_KEY) ?? null;
+      const needsMigration = stored ? storedSoloStateNeedsMigration(stored) : false;
+      this.state = stored ? migrateStoredSoloState(stored) : null;
+      let shouldPersist = needsMigration;
       if (this.state && !Number.isFinite(this.state.expiresAt)) {
         this.state.expiresAt = Date.now() + SOLO_SESSION_TTL_MS;
+        shouldPersist = true;
+      }
+      if (this.state && shouldPersist) {
         await ctx.storage.put(SOLO_STATE_KEY, this.state);
       }
     });
@@ -190,7 +198,10 @@ export class SoloSession extends DurableObject<Env> {
   > {
     try {
       const repository = new QuestionRepository(this.env.QUESTIONS_DB);
-      const questionCount = await repository.countEnabledForMaps(settings.mapPool);
+      const questionCount = await repository.countEnabledForSelection(
+        settings.mapPool,
+        settings.difficultyPool,
+      );
       if (questionCount < settings.totalRounds) {
         return {
           ok: false,
@@ -204,7 +215,11 @@ export class SoloSession extends DurableObject<Env> {
         };
       }
       const candidateLimit = Math.min(questionCount, settings.totalRounds + previouslyUsedIds.length);
-      const candidates = await repository.getRandomEnabledForMaps(settings.mapPool, candidateLimit);
+      const candidates = await repository.getRandomEnabledForSelection(
+        settings.mapPool,
+        settings.difficultyPool,
+        candidateLimit,
+      );
       const questions = prioritizeFreshQuestions(candidates, settings.totalRounds, previouslyUsedIds);
       if (questions.length < settings.totalRounds) {
         return {

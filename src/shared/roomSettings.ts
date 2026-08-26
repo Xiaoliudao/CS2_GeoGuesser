@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { MAP_IDS, type MapId } from "./maps";
 import { MultiplayerCreatorSchema, type MultiplayerCreator } from "./multiplayer";
+import {
+  DEFAULT_DIFFICULTY_POOL,
+  DifficultyPoolSchema,
+  type QuestionDifficulty,
+} from "./questionDifficulty";
 
 export const MIN_ROUNDS = 1;
 export const MAX_ROUNDS = 50;
@@ -14,6 +19,7 @@ export interface RoomSettings {
   totalRounds: number;
   roundDurationSeconds: number;
   mapPool: MapId[];
+  difficultyPool: QuestionDifficulty[];
   serverRegion: ServerRegion;
 }
 
@@ -25,6 +31,7 @@ export interface CreateRoomRequest {
 export interface QuestionAvailability {
   availableQuestions: number;
   byMap: Partial<Record<MapId, number>>;
+  byDifficulty?: Partial<Record<QuestionDifficulty, number>>;
 }
 
 export type RoomSettingsValidationErrorCode =
@@ -33,12 +40,15 @@ export type RoomSettingsValidationErrorCode =
   | "INVALID_ROUND_DURATION"
   | "EMPTY_MAP_POOL"
   | "INVALID_MAP_ID"
+  | "EMPTY_DIFFICULTY_POOL"
+  | "INVALID_DIFFICULTY"
   | "INVALID_SERVER_REGION";
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   totalRounds: 5,
   roundDurationSeconds: 20,
   mapPool: [...MAP_IDS],
+  difficultyPool: [...DEFAULT_DIFFICULTY_POOL],
   serverRegion: "auto",
 };
 
@@ -64,6 +74,7 @@ export const RoomSettingsSchema = z.object({
     .min(MIN_ROUND_DURATION_SECONDS)
     .max(MAX_ROUND_DURATION_SECONDS),
   mapPool: MapPoolSchema,
+  difficultyPool: DifficultyPoolSchema,
   serverRegion: z.enum(SERVER_REGIONS),
 }).strict();
 
@@ -71,7 +82,10 @@ export const CreateRoomRequestSchema = z.object({
   settings: RoomSettingsSchema,
   creator: MultiplayerCreatorSchema,
 }).strict();
-export const QuestionAvailabilityRequestSchema = z.object({ mapPool: MapPoolSchema }).strict();
+export const QuestionAvailabilityRequestSchema = z.object({
+  mapPool: MapPoolSchema,
+  difficultyPool: DifficultyPoolSchema,
+}).strict();
 
 export function roomSettingsValidationErrorCode(error: z.ZodError): RoomSettingsValidationErrorCode {
   const roundIssue = error.issues.find((issue) => issue.path.includes("totalRounds"));
@@ -82,6 +96,10 @@ export function roomSettingsValidationErrorCode(error: z.ZodError): RoomSettings
   if (mapIssue) {
     return mapIssue.code === "too_small" ? "EMPTY_MAP_POOL" : "INVALID_MAP_ID";
   }
+  const difficultyIssue = error.issues.find((issue) => issue.path.includes("difficultyPool"));
+  if (difficultyIssue) {
+    return difficultyIssue.code === "too_small" ? "EMPTY_DIFFICULTY_POOL" : "INVALID_DIFFICULTY";
+  }
   if (error.issues.some((issue) => issue.path.includes("serverRegion"))) return "INVALID_SERVER_REGION";
   return "INVALID_ROOM_SETTINGS";
 }
@@ -90,7 +108,12 @@ export function roomSettingsFromStorage(rawSettings: unknown, legacyTotalRounds?
   const parsed = RoomSettingsSchema.safeParse(rawSettings);
   if (parsed.success) return parsed.data;
   if (rawSettings && typeof rawSettings === "object") {
-    const migrated = RoomSettingsSchema.safeParse({ ...rawSettings, serverRegion: "auto" });
+    const stored = rawSettings as Record<string, unknown>;
+    const migrated = RoomSettingsSchema.safeParse({
+      ...stored,
+      difficultyPool: stored.difficultyPool ?? [...DEFAULT_DIFFICULTY_POOL],
+      serverRegion: stored.serverRegion ?? "auto",
+    });
     if (migrated.success) return migrated.data;
   }
   const legacyRounds = typeof legacyTotalRounds === "number"
@@ -103,6 +126,7 @@ export function roomSettingsFromStorage(rawSettings: unknown, legacyTotalRounds?
     ...DEFAULT_ROOM_SETTINGS,
     totalRounds: legacyRounds,
     mapPool: [...DEFAULT_ROOM_SETTINGS.mapPool],
+    difficultyPool: [...DEFAULT_ROOM_SETTINGS.difficultyPool],
   };
 }
 

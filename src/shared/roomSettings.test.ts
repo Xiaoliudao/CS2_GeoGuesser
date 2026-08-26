@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ROOM_SETTINGS,
   CreateRoomRequestSchema,
+  QuestionAvailabilityRequestSchema,
   RoomSettingsSchema,
   roomSettingsValidationErrorCode,
   roundDeadline,
   roundDurationMs,
   roomSettingsFromStorage,
 } from "./roomSettings";
+import { QUESTION_DIFFICULTIES } from "./questionDifficulty";
 
 const CREATOR = {
   playerId: "11111111-1111-4111-8111-111111111111",
@@ -21,14 +23,19 @@ describe("RoomSettings validation", () => {
       totalRounds: 25,
       roundDurationSeconds: 60,
       mapPool: ["mirage"],
+      difficultyPool: ["hell"],
       serverRegion: "asia",
-    })).toEqual({ totalRounds: 25, roundDurationSeconds: 60, mapPool: ["mirage"], serverRegion: "asia" });
+    })).toEqual({ totalRounds: 25, roundDurationSeconds: 60, mapPool: ["mirage"], difficultyPool: ["hell"], serverRegion: "asia" });
     expect(RoomSettingsSchema.parse({
       totalRounds: 50,
       roundDurationSeconds: 120,
       mapPool: ["overpass", "mirage", "dust2"],
+      difficultyPool: ["hell", "easy"],
       serverRegion: "auto",
-    }).mapPool).toEqual(["mirage", "dust2", "overpass"]);
+    })).toMatchObject({
+      mapPool: ["mirage", "dust2", "overpass"],
+      difficultyPool: ["easy", "hell"],
+    });
   });
 
   it.each([
@@ -42,6 +49,9 @@ describe("RoomSettings validation", () => {
     { totalRounds: 5, roundDurationSeconds: 20, mapPool: ["cache"] },
     { totalRounds: 5, roundDurationSeconds: 20, mapPool: ["mirage", "mirage"] },
     { totalRounds: 5, roundDurationSeconds: 20, mapPool: ["mirage"], serverRegion: "europe" },
+    { ...DEFAULT_ROOM_SETTINGS, difficultyPool: [] },
+    { ...DEFAULT_ROOM_SETTINGS, difficultyPool: ["easy", "easy"] },
+    { ...DEFAULT_ROOM_SETTINGS, difficultyPool: ["medium"] },
   ])("rejects malformed settings %#", (settings) => {
     expect(RoomSettingsSchema.safeParse(settings).success).toBe(false);
   });
@@ -50,7 +60,21 @@ describe("RoomSettings validation", () => {
     const migrated = roomSettingsFromStorage(undefined, 15);
     expect(migrated).toEqual({ ...DEFAULT_ROOM_SETTINGS, totalRounds: 15 });
     expect(migrated.mapPool).not.toBe(DEFAULT_ROOM_SETTINGS.mapPool);
+    expect(migrated.difficultyPool).not.toBe(DEFAULT_ROOM_SETTINGS.difficultyPool);
     expect(roomSettingsFromStorage(undefined, 0)).toEqual(DEFAULT_ROOM_SETTINGS);
+
+    expect(roomSettingsFromStorage({
+      totalRounds: 10,
+      roundDurationSeconds: 30,
+      mapPool: ["mirage"],
+      serverRegion: "asia",
+    })).toEqual({
+      totalRounds: 10,
+      roundDurationSeconds: 30,
+      mapPool: ["mirage"],
+      difficultyPool: [...QUESTION_DIFFICULTIES],
+      serverRegion: "asia",
+    });
   });
 
   it("derives a 45 second authoritative deadline duration", () => {
@@ -66,6 +90,18 @@ describe("RoomSettings validation", () => {
       roundDurationSeconds: 20,
       mapPool: ["mirage"],
     }).success).toBe(false);
+  });
+
+  it("requires both map and difficulty filters for safe availability requests", () => {
+    expect(QuestionAvailabilityRequestSchema.parse({
+      mapPool: ["inferno", "mirage"],
+      difficultyPool: ["hell", "easy"],
+    })).toEqual({
+      mapPool: ["mirage", "inferno"],
+      difficultyPool: ["easy", "hell"],
+    });
+    expect(QuestionAvailabilityRequestSchema.safeParse({ mapPool: ["mirage"] }).success).toBe(false);
+    expect(QuestionAvailabilityRequestSchema.safeParse({ mapPool: ["mirage"], difficultyPool: [] }).success).toBe(false);
   });
 
   it("strictly validates creator identity without accepting a host flag", () => {
@@ -85,6 +121,9 @@ describe("RoomSettings validation", () => {
       [{ ...DEFAULT_ROOM_SETTINGS, roundDurationSeconds: 9 }, "INVALID_ROUND_DURATION"],
       [{ ...DEFAULT_ROOM_SETTINGS, mapPool: [] }, "EMPTY_MAP_POOL"],
       [{ ...DEFAULT_ROOM_SETTINGS, mapPool: ["cache"] }, "INVALID_MAP_ID"],
+      [{ ...DEFAULT_ROOM_SETTINGS, difficultyPool: [] }, "EMPTY_DIFFICULTY_POOL"],
+      [{ ...DEFAULT_ROOM_SETTINGS, difficultyPool: ["easy", "easy"] }, "INVALID_DIFFICULTY"],
+      [{ ...DEFAULT_ROOM_SETTINGS, difficultyPool: ["medium"] }, "INVALID_DIFFICULTY"],
       [{ ...DEFAULT_ROOM_SETTINGS, serverRegion: "europe" }, "INVALID_SERVER_REGION"],
     ] as const;
     for (const [settings, code] of cases) {
@@ -101,6 +140,7 @@ describe("RoomSettings validation", () => {
         totalRounds: 15,
         roundDurationSeconds: 30,
         mapPool: ["inferno", "mirage"],
+        difficultyPool: ["hell", "easy"],
         serverRegion: "asia",
       });
       const persisted = JSON.parse(JSON.stringify({ phase, settings })) as { settings: unknown };
@@ -108,9 +148,11 @@ describe("RoomSettings validation", () => {
         totalRounds: 15,
         roundDurationSeconds: 30,
         mapPool: ["mirage", "inferno"],
+        difficultyPool: ["easy", "hell"],
         serverRegion: "asia",
       });
       expect(persisted.settings).not.toHaveProperty("difficulty");
+      expect(persisted.settings).toHaveProperty("difficultyPool", ["easy", "hell"]);
     },
   );
   });

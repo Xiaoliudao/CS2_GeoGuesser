@@ -28,6 +28,7 @@ describe("safe room invite preview", () => {
         totalRounds: DEFAULT_ROOM_SETTINGS.totalRounds,
         roundDurationSeconds: DEFAULT_ROOM_SETTINGS.roundDurationSeconds,
         mapCount: DEFAULT_ROOM_SETTINGS.mapPool.length,
+        difficultyPool: [...DEFAULT_ROOM_SETTINGS.difficultyPool],
         serverRegion: DEFAULT_ROOM_SETTINGS.serverRegion,
       },
     });

@@ -12,6 +12,7 @@ import { MAP_IDS, isLayerForMap, type MapId, type RadarLayerId } from "../../src
 import { selectRadarLayer, worldToRadarPoint, type MapOverview, type ViewAngle, type WorldPosition } from "../../src/shared/radarCoordinates";
 import type { ManifestQuestion } from "./question-manifest";
 import { insertRemoteQuestion, runWrangler, verifyRemoteR2Object } from "./question-d1-admin";
+import { QuestionDifficultySchema } from "../../src/shared/questionDifficulty";
 
 const projectRoot = resolve(import.meta.dirname, "..", "..");
 const overviewPath = join(projectRoot, "content", "generated", "map-overviews.json");
@@ -31,7 +32,7 @@ function args(): Map<string, string | true> {
 
 function required(values: Map<string, string | true>, name: string): string {
   const value = values.get(name);
-  if (typeof value !== "string") throw new Error(`QUESTION_IMPORT_USAGE --image <real screenshot> --map <map> --getpos '<setpos_exact ...;setang_exact ...>'`);
+  if (typeof value !== "string") throw new Error(`QUESTION_IMPORT_USAGE --image <real screenshot> --map <map> --difficulty <easy|hard|hell> --getpos '<setpos_exact ...;setang_exact ...>'`);
   return value;
 }
 
@@ -49,6 +50,7 @@ async function main() {
   if (!existsSync(imagePath)) throw new Error(`REAL SCREENSHOT NOT FOUND ${imagePath}`);
   const mapId = required(values, "--map") as MapId;
   if (!MAP_IDS.includes(mapId)) throw new Error(`Unsupported map ${mapId}.`);
+  const difficulty = QuestionDifficultySchema.parse(required(values, "--difficulty").trim().toLowerCase());
   if (!existsSync(overviewPath)) throw new Error("REAL RADAR METADATA REQUIRED. Run npm run radar:sync first.");
   const overviewDocument = JSON.parse(readFileSync(overviewPath, "utf8")) as { maps?: Partial<Record<MapId, MapOverview>> };
   const overview = overviewDocument.maps?.[mapId];
@@ -81,6 +83,7 @@ async function main() {
     .toFile(output);
   const previewParams = new URLSearchParams({
     map: mapId, layer: layerId, x: String(automaticPoint.x), y: String(automaticPoint.y),
+    difficulty,
     world: `${capture.worldPosition.x},${capture.worldPosition.y},${capture.worldPosition.z}`,
     image: `/@fs/${output.replaceAll("\\", "/")}`,
   });
@@ -95,6 +98,7 @@ async function main() {
     imageAssetId: assetId,
     correctMapId: mapId,
     correctLayerId: layerId,
+    difficulty,
     correctPoint,
     automaticPoint,
     worldPosition: capture.worldPosition,
@@ -113,6 +117,7 @@ async function main() {
     "QUESTION IMPORTED",
     `ID: ${questionId}`,
     `Map: ${mapId}`,
+    `Difficulty: ${difficulty}`,
     `World: X ${capture.worldPosition.x} / Y ${capture.worldPosition.y} / Z ${capture.worldPosition.z}`,
     `Radar Layer: ${layerId}`,
     `Radar Point: x ${correctPoint.x} / y ${correctPoint.y}`,

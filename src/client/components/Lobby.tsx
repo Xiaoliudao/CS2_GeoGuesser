@@ -1,6 +1,7 @@
 import type { GameRoomState } from "../../shared/types";
 import { getMap } from "../../shared/maps";
 import { MIN_MULTIPLAYER_PLAYERS } from "../../shared/multiplayer";
+import { QUESTION_DIFFICULTIES, QUESTION_DIFFICULTY_LABELS } from "../../shared/questionDifficulty";
 import { InviteRoomButton } from "./InviteRoomButton";
 
 export function Lobby({
@@ -27,6 +28,12 @@ export function Lobby({
   const canStart = isHost && allPlayersReady && questionsReady;
   const openSlots = Math.max(0, room.maxPlayers - activePlayers.length);
   const unreadyCount = activePlayers.filter((player) => !player.ready || !player.connected).length;
+  const difficultySummary = room.settings.difficultyPool.length === QUESTION_DIFFICULTIES.length
+    ? "ALL"
+    : QUESTION_DIFFICULTIES
+      .filter((difficulty) => room.settings.difficultyPool.includes(difficulty))
+      .map((difficulty) => QUESTION_DIFFICULTY_LABELS[difficulty])
+      .join(" · ");
 
   const waitingMessage = !enoughPlayers
     ? "WAITING FOR AT LEAST ONE MORE PLAYER…"
@@ -44,6 +51,7 @@ export function Lobby({
       <div className="lobby-settings" aria-label="Match settings">
         <div><span>ROUNDS</span><strong>{room.settings.totalRounds}</strong></div>
         <div><span>ROUND TIME</span><strong>{room.settings.roundDurationSeconds} SEC</strong></div>
+        <div><span>DIFFICULTY</span><strong>{difficultySummary}</strong></div>
         <div><span>SERVER</span><strong>{room.settings.serverRegion === "asia" ? "ASIA" : "AUTO"}</strong></div>
         <div className="lobby-map-pool">
           <span>MAP POOL</span>
@@ -89,13 +97,13 @@ export function Lobby({
       {room.questionCount > 0 && room.questionCount < room.settings.totalRounds && (
         <div className="content-empty-state">
           <strong>NOT ENOUGH QUESTIONS</strong>
-          <span>Only {room.questionCount} questions remain for this map pool; this match requires {room.settings.totalRounds}.</span>
+          <span>Only {room.questionCount} questions remain for the selected maps and difficulties; this match requires {room.settings.totalRounds}.</span>
         </div>
       )}
       {room.questionCount >= room.settings.totalRounds && (
         <div className="content-available-state">
           <strong>{room.questionCount} REAL QUESTION{room.questionCount === 1 ? "" : "S"} AVAILABLE</strong>
-          <span>This match requires {room.settings.totalRounds} verified round{room.settings.totalRounds === 1 ? "" : "s"} from the selected maps.</span>
+          <span>This match requires {room.settings.totalRounds} verified round{room.settings.totalRounds === 1 ? "" : "s"} from the selected maps and difficulties.</span>
         </div>
       )}
       <div className={`lobby-actions ${isHost ? "has-start" : ""}`}>

@@ -63,7 +63,12 @@ describe("SoloPage setup", () => {
     await waitFor(() => expect(screen.getByText("SESSION COMPLETE")).toBeTruthy());
 
     const startCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/solo");
+    const availabilityCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/questions/availability");
     expect(startCall).toBeTruthy();
+    expect(JSON.parse(String(availabilityCall![1]?.body))).toEqual({
+      mapPool: DEFAULT_SOLO_SETTINGS.mapPool,
+      difficultyPool: DEFAULT_SOLO_SETTINGS.difficultyPool,
+    });
     expect(JSON.parse(String(startCall![1]?.body))).toEqual({ nickname: "Tester", settings: DEFAULT_SOLO_SETTINGS });
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/rooms")).toBe(false);
     expect(websocket).not.toHaveBeenCalled();

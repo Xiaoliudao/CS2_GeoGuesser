@@ -2,6 +2,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MAP_IDS, type MapId } from "../../shared/maps";
+import {
+  QUESTION_DIFFICULTIES,
+  type QuestionDifficulty,
+} from "../../shared/questionDifficulty";
 import type { ServerRegion } from "../../shared/roomSettings";
 import {
   MATCH_SETTINGS_DETAILS_ID,
@@ -16,6 +20,7 @@ function renderPanel(overrides: Partial<{
   roundsInput: string;
   durationInput: string;
   mapPool: MapId[];
+  difficultyPool: QuestionDifficulty[];
   serverRegion: ServerRegion;
   availableQuestions: number;
   checkingAvailability: boolean;
@@ -26,6 +31,7 @@ function renderPanel(overrides: Partial<{
     roundsInput: overrides.roundsInput ?? "5",
     durationInput: overrides.durationInput ?? "20",
     mapPool: overrides.mapPool ?? [...MAP_IDS],
+    difficultyPool: overrides.difficultyPool ?? [...QUESTION_DIFFICULTIES],
     serverRegion: overrides.serverRegion ?? "auto",
     availability: { availableQuestions: overrides.availableQuestions ?? 61, byMap: {} },
     checkingAvailability: overrides.checkingAvailability ?? false,
@@ -34,6 +40,7 @@ function renderPanel(overrides: Partial<{
     onRoundsChange: noOp,
     onDurationChange: noOp,
     onMapPoolChange: noOp,
+    onDifficultyPoolChange: noOp,
     onServerRegionChange: noOp,
   }));
 }
@@ -42,7 +49,7 @@ describe("compact match settings", () => {
   it("renders the default settings collapsed with one concise summary", () => {
     const markup = renderPanel();
 
-    expect(markup).toContain("5 ROUNDS · 20 SEC · ALL MAPS");
+    expect(markup).toContain("5 ROUNDS · 20 SEC · ALL MAPS · ALL DIFFICULTIES");
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain(`aria-controls="${MATCH_SETTINGS_DETAILS_ID}"`);
     expect(markup).toContain("CUSTOMIZE MATCH");
@@ -58,6 +65,7 @@ describe("compact match settings", () => {
     expect(markup).not.toMatch(new RegExp(`id="${MATCH_SETTINGS_DETAILS_ID}"[^>]*hidden`));
     expect(markup).toContain("QUESTIONS");
     expect(markup).toContain("ROUND TIME");
+    expect(markup).toContain("DIFFICULTY");
     expect(markup).toContain("MAP POOL");
     expect(markup).toContain("SERVER REGION");
   });
@@ -72,10 +80,10 @@ describe("compact match settings", () => {
     const collapsed = renderPanel(settings);
     const expanded = renderPanel({ ...settings, expanded: true });
 
-    expect(collapsed).toContain("10 ROUNDS · 30 SEC · 3 MAPS · ASIA");
+    expect(collapsed).toContain("10 ROUNDS · 30 SEC · 3 MAPS · ALL DIFFICULTIES · ASIA");
     expect(expanded).toMatch(/aria-label="Custom question count"[^>]*value="10"/);
     expect(expanded).toMatch(/aria-label="Custom round duration in seconds"[^>]*value="30"/);
-    expect(expanded).toContain("10 ROUNDS · 30 SEC · 3 MAPS · ASIA");
+    expect(expanded).toContain("10 ROUNDS · 30 SEC · 3 MAPS · ALL DIFFICULTIES · ASIA");
   });
 
   it("highlights custom labels only when values do not match a preset", () => {
@@ -93,8 +101,22 @@ describe("compact match settings", () => {
       roundsInput: "5",
       durationInput: "20",
       mapPool: ["dust2"],
+      difficultyPool: [...QUESTION_DIFFICULTIES],
       serverRegion: "auto",
-    })).toBe("5 ROUNDS · 20 SEC · DUST II");
+    })).toBe("5 ROUNDS · 20 SEC · DUST II · ALL DIFFICULTIES");
+  });
+
+  it("summarizes one, multiple, and all selected difficulties in canonical order", () => {
+    const base = {
+      roundsInput: "5",
+      durationInput: "20",
+      mapPool: [...MAP_IDS],
+      serverRegion: "auto" as const,
+    };
+
+    expect(formatMatchSettingsSummary({ ...base, difficultyPool: ["easy"] })).toContain("· EASY");
+    expect(formatMatchSettingsSummary({ ...base, difficultyPool: ["hell", "easy"] })).toContain("· EASY + HELL");
+    expect(formatMatchSettingsSummary({ ...base, difficultyPool: [...QUESTION_DIFFICULTIES] })).toContain("· ALL DIFFICULTIES");
   });
 
   it("shows blocking availability errors even while collapsed", () => {
@@ -108,6 +130,7 @@ describe("compact match settings", () => {
     [{ roundsInput: "0" }, "QUESTIONS MUST BE A WHOLE NUMBER FROM 1 TO 50"],
     [{ durationInput: "9" }, "ROUND TIME MUST BE A WHOLE NUMBER FROM 10 TO 120 SECONDS"],
     [{ mapPool: [] as MapId[] }, "SELECT AT LEAST ONE MAP"],
+    [{ difficultyPool: [] as QuestionDifficulty[] }, "SELECT AT LEAST ONE DIFFICULTY"],
     [{ availabilityError: "Question bank unavailable" }, "Question bank unavailable"],
   ])("keeps invalid settings visible in the compact state", (overrides, message) => {
     expect(renderPanel(overrides)).toContain(message);

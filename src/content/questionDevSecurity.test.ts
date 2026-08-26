@@ -12,6 +12,7 @@ describe("question publishing security boundary", () => {
     const workerSource = readFileSync(resolve(import.meta.dirname, "..", "worker", "index.ts"), "utf8");
     expect(workerSource).not.toContain("__dev_api__");
     expect(workerSource).not.toContain("question-overrides.json");
+    expect(workerSource).not.toContain("question-difficulty-overrides.json");
     expect(workerSource).not.toContain("question-preview.json");
   });
 

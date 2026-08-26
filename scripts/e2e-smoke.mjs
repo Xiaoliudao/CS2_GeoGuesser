@@ -117,7 +117,10 @@ function normalizeScore(points) {
 const availabilityResponse = await fetch(`${baseUrl}/api/questions/availability`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ mapPool: ["mirage", "inferno", "ancient", "nuke", "anubis", "dust2", "train", "overpass"] }),
+  body: JSON.stringify({
+    mapPool: ["mirage", "inferno", "ancient", "nuke", "anubis", "dust2", "train", "overpass"],
+    difficultyPool: ["hard"],
+  }),
 });
 assert(availabilityResponse.ok, `Expected availability 200, got ${availabilityResponse.status}`);
 const availability = await availabilityResponse.json();
@@ -132,6 +135,7 @@ const requestedSettings = {
   totalRounds: Math.min(5, availability.availableQuestions),
   roundDurationSeconds: 20,
   mapPool: availableMapPool,
+  difficultyPool: ["hard"],
   serverRegion: "auto",
 };
 const firstLayerByMap = { nuke: "upper", train: "upper" };
@@ -377,6 +381,7 @@ try {
   const roundsToPlay = alphaRound.settings.totalRounds;
   for (let round = 1; round <= roundsToPlay; round += 1) {
     assert(currentAlphaRound.currentQuestion.questionId === currentBravoRound.currentQuestion.questionId, `Round ${round} question IDs differ`);
+    assert(!Object.hasOwn(currentAlphaRound.currentQuestion, "difficulty"), `Round ${round} leaked exact question difficulty`);
     assert(currentAlphaRound.roundEndsAt === currentBravoRound.roundEndsAt, `Round ${round} deadlines differ`);
     assert(/^q-[a-z0-9]+$/.test(currentAlphaRound.currentQuestion.questionId), "Question ID is not opaque");
     assert(/^\/media\/questions\/[A-Za-z0-9_-]{12,80}$/.test(currentAlphaRound.currentQuestion.imageUrl), "Image URL is not opaque");

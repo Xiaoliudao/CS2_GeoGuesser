@@ -4,12 +4,14 @@ import { getMapOverview } from "../../shared/mapOverviews.generated";
 import { getMap, MAPS, type MapId, type RadarLayerId } from "../../shared/maps";
 import { traceWorldToRadarPoint, type ViewAngle, type WorldPosition } from "../../shared/radarCoordinates";
 import type { MapPoint } from "../../shared/types";
+import { QUESTION_DIFFICULTIES, QUESTION_DIFFICULTY_LABELS, type QuestionDifficulty } from "../../shared/questionDifficulty";
 import { RadarPicker } from "../components/RadarPicker";
 
 interface PublishedQaQuestion {
   id: string;
   map_id: MapId;
   layer_id: RadarLayerId;
+  difficulty: QuestionDifficulty;
   correct_x: number;
   correct_y: number;
   automatic_x: number | null;
@@ -32,6 +34,7 @@ interface QaQuestion {
   kind: "preview" | "imported";
   mapId: MapId;
   layerId: RadarLayerId;
+  difficulty?: QuestionDifficulty;
   automaticPoint: MapPoint;
   manualOverride?: MapPoint;
   finalPoint: MapPoint;
@@ -55,6 +58,7 @@ function publishedQaQuestion(question: PublishedQaQuestion): QaQuestion {
     kind: "imported",
     mapId: question.map_id,
     layerId: question.layer_id,
+    difficulty: question.difficulty,
     automaticPoint,
     ...(question.coordinate_source === "manual-override" ? { manualOverride: finalPoint } : {}),
     finalPoint,
@@ -76,6 +80,7 @@ function previewQaQuestion(question: QaPreviewQuestion): QaQuestion {
     kind: "preview",
     mapId: question.mapId,
     layerId: question.layerId,
+    difficulty: question.difficulty,
     automaticPoint: question.automaticPoint,
     manualOverride: question.manualOverride,
     finalPoint: question.finalPoint,
@@ -173,7 +178,38 @@ export function QuestionEditorPage() {
 
   function replacePreview(question: QaPreviewQuestion): void {
     const replacement = previewQaQuestion(question);
-    setPreviewQuestions((questions) => questions.map((candidate) => candidate.id === replacement.id ? replacement : candidate));
+    setPreviewQuestions((questions) => questions.map((candidate) => candidate.key === replacement.key ? replacement : candidate));
+  }
+
+  async function saveDifficulty(difficulty: QuestionDifficulty): Promise<void> {
+    if (!selectedQuestion || selectedQuestion.difficulty === difficulty) return;
+    setBusy(true);
+    setActionMessage("");
+    try {
+      if (selectedQuestion.kind === "preview") {
+        const data = await apiRequest<{ question: QaPreviewQuestion }>(
+          `/__dev_api__/questions/${encodeURIComponent(selectedQuestion.id)}/difficulty`,
+          { method: "POST", body: JSON.stringify({ difficulty }) },
+        );
+        replacePreview(data.question);
+      } else {
+        const data = await apiRequest<{ published: PublishedQaQuestion[] }>(
+          `/__dev_api__/published/${encodeURIComponent(selectedQuestion.id)}/difficulty`,
+          { method: "POST", body: JSON.stringify({ difficulty }) },
+        );
+        const updated = data.published.find((question) => question.id === selectedQuestion.id);
+        if (!updated) throw new Error("QUESTION_NOT_FOUND");
+        const replacement = publishedQaQuestion(updated);
+        setPreviewQuestions((questions) => questions.map((candidate) => (
+          candidate.key === replacement.key ? replacement : candidate
+        )));
+      }
+      setActionMessage(`DIFFICULTY SAVED · ${QUESTION_DIFFICULTY_LABELS[difficulty]}`);
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveOverride(): Promise<void> {
@@ -209,6 +245,10 @@ export function QuestionEditorPage() {
 
   async function publishQuestion(): Promise<void> {
     if (!selectedQuestion) return;
+    if (!selectedQuestion.difficulty) {
+      setActionMessage("SELECT A DIFFICULTY");
+      return;
+    }
     setBusy(true);
     setActionMessage("");
     try {
@@ -243,7 +283,7 @@ export function QuestionEditorPage() {
               <optgroup key={map.id} label={map.name}>
                 {questions.map((question) => (
                   <option key={question.key} value={question.key}>
-                    {map.name} / {question.displayId} · {question.status.toUpperCase()}
+                    {map.name} / {question.displayId} · {question.difficulty ? QUESTION_DIFFICULTY_LABELS[question.difficulty] : "UNSET"} · {question.status.toUpperCase()}
                   </option>
                 ))}
               </optgroup>
@@ -251,6 +291,27 @@ export function QuestionEditorPage() {
           </select>
           <label>MAP / LAYER</label>
           <strong>{getMap(selectedQuestion.mapId).name} · {selectedQuestion.layerId.toUpperCase()}</strong>
+          <div className="difficulty-pool-selector setting-group" role="radiogroup" aria-label="Question difficulty">
+            <span className="setting-group-label">DIFFICULTY</span>
+            <div className="difficulty-pool-grid">
+              {QUESTION_DIFFICULTIES.map((difficulty) => {
+                const selected = selectedQuestion.difficulty === difficulty;
+                return (
+                  <button
+                    key={difficulty}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={`difficulty-${difficulty} ${selected ? "is-selected" : ""}`}
+                    disabled={busy}
+                    onClick={() => void saveDifficulty(difficulty)}
+                  >
+                    <span>{QUESTION_DIFFICULTY_LABELS[difficulty]}</span><b>{selected ? "✓" : ""}</b>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className={`coordinate-mode ${isManual ? "is-manual" : "is-auto"}`}>{coordinateSource}</div>
           <div className="point-audit">
             <div><span>AUTOMATIC POINT</span><code>x {selectedQuestion.automaticPoint.x.toFixed(9)}<br />y {selectedQuestion.automaticPoint.y.toFixed(9)}</code></div>

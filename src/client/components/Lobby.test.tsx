@@ -74,6 +74,15 @@ describe("Lobby ready toggle", () => {
     expect(screen.getByRole("button", { name: "INVITE PLAYER" })).toBeTruthy();
   });
 
+  it("shows the selected difficulty pool in the waiting room", () => {
+    const room = waitingRoom(false);
+    room.settings.difficultyPool = ["easy", "hell"];
+    render(<Lobby room={room} playerId="player-a" onReady={vi.fn()} onStart={vi.fn()} />);
+
+    const settings = screen.getByLabelText("Match settings");
+    expect(settings.textContent).toContain("DIFFICULTYEASY · HELL");
+  });
+
   it("renders five stable slots and hides invites when the room is full", () => {
     const room = waitingRoom(true);
     room.players = Array.from({ length: 5 }, (_, slotIndex) => ({

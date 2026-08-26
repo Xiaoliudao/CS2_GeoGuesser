@@ -14,6 +14,7 @@ import {
   roundDurationMs,
   type RoomSettings,
 } from "../../shared/roomSettings";
+import { QuestionDifficultySchema } from "../../shared/questionDifficulty";
 import type {
   GameErrorCode,
   GameRoomState,
@@ -88,7 +89,7 @@ interface StoredGuess {
 }
 
 interface InternalRoomState extends RoundTiming {
-  schemaVersion: 8;
+  schemaVersion: 9;
   roomCode: string;
   status: RoomStatus;
   settings: RoomSettings;
@@ -145,7 +146,15 @@ function normalizeRoundResult(result: RoundResultState | null | undefined): Roun
 }
 
 function migrateStoredState(stored: StoredRoomState): InternalRoomState {
-  const questionSnapshot = stored.questionSnapshot ?? [];
+  const questionSnapshot = (stored.questionSnapshot ?? []).map((question) => {
+    const parsedDifficulty = QuestionDifficultySchema.safeParse(
+      (question as ServerQuestion & { difficulty?: unknown }).difficulty,
+    );
+    return {
+      ...question,
+      difficulty: parsedDifficulty.success ? parsedDifficulty.data : "hard",
+    };
+  });
   const currentQuestionId = stored.currentQuestionId ?? null;
   const status = stored.status ?? "waiting";
   const usedSlots = new Set<number>();
@@ -185,7 +194,7 @@ function migrateStoredState(stored: StoredRoomState): InternalRoomState {
     ? stored.hostPlayerId
     : null;
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     roomCode: stored.roomCode ?? "UNKNOWN",
     status,
     settings: roomSettingsFromStorage(stored.settings, stored.totalRounds),
@@ -232,7 +241,7 @@ export class GameRoom extends DurableObject<Env> {
       if (stored) {
         this.state = migrateStoredState(stored);
         if (
-          stored.schemaVersion !== 8
+          stored.schemaVersion !== 9
           || stored.totalRounds !== undefined
           || stored.maxPlayers !== MAX_MULTIPLAYER_PLAYERS
           || !Array.isArray(stored.matchPlayerIds)
@@ -370,7 +379,7 @@ export class GameRoom extends DurableObject<Env> {
 
     const now = Date.now();
     this.state = {
-      schemaVersion: 8,
+      schemaVersion: 9,
       roomCode: result.data,
       status: "waiting",
       settings: settings.data,
@@ -599,9 +608,14 @@ export class GameRoom extends DurableObject<Env> {
     try {
       const requiredQuestions = this.state.settings.totalRounds;
       const mapPool = this.state.settings.mapPool;
-      const questionCount = await this.questions().countEnabledForMaps(mapPool);
+      const difficultyPool = this.state.settings.difficultyPool;
+      const questionCount = await this.questions().countEnabledForSelection(mapPool, difficultyPool);
       const snapshotLimit = Math.min(questionCount, requiredQuestions * (MAX_ASSET_PREPARE_RETRIES + 1));
-      const questions = await this.questions().getRandomEnabledForMaps(mapPool, snapshotLimit);
+      const questions = await this.questions().getRandomEnabledForSelection(
+        mapPool,
+        difficultyPool,
+        snapshotLimit,
+      );
       if (!this.state || this.state.stateVersion !== expectedStateVersion) {
         this.sendError(socket, "PLAYERS_NOT_READY", "The lobby changed while the match was starting. Please try again.");
         return;
@@ -629,7 +643,7 @@ export class GameRoom extends DurableObject<Env> {
           type: "error",
           payload: {
             code: "NOT_ENOUGH_QUESTIONS",
-            message: `Only ${Math.min(questionCount, questions.length)} questions are currently available for this map pool.`,
+            message: `Only ${Math.min(questionCount, questions.length)} questions are currently available for this map and difficulty pool.`,
           },
         });
         await this.commit();
@@ -1081,7 +1095,11 @@ export class GameRoom extends DurableObject<Env> {
     return {
       roomCode: state.roomCode,
       status: state.status,
-      settings: { ...state.settings, mapPool: [...state.settings.mapPool] },
+      settings: {
+        ...state.settings,
+        mapPool: [...state.settings.mapPool],
+        difficultyPool: [...state.settings.difficultyPool],
+      },
       players,
       hostPlayerId: state.hostPlayerId,
       maxPlayers: state.maxPlayers,

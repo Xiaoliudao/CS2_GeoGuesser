@@ -1,5 +1,9 @@
 import type { MapId, RadarLayerId } from "../../shared/maps";
 import { normalizePublicOrigin } from "../../shared/mediaUrls";
+import {
+  DEFAULT_DIFFICULTY_POOL,
+  QuestionDifficultySchema,
+} from "../../shared/questionDifficulty";
 import { roundDurationMs } from "../../shared/roomSettings";
 import type {
   SoloActionErrorCode,
@@ -8,6 +12,7 @@ import type {
   SoloSessionState,
   SoloSettings,
 } from "../../shared/solo";
+import { SoloSettingsSchema } from "../../shared/solo";
 import type { MapPoint, PlayerRoundResult } from "../../shared/types";
 import { toPublicQuestion, type ServerQuestion } from "../game/questions";
 import { normalizeScore, scoreGuess } from "../game/scoring";
@@ -25,7 +30,7 @@ interface StoredSoloGuess {
 }
 
 export interface InternalSoloState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   sessionId: string;
   generation: number;
   nickname: string;
@@ -46,6 +51,44 @@ export interface InternalSoloState {
   totalScore: number;
   expiresAt: number;
   stateVersion: number;
+}
+
+export function storedSoloStateNeedsMigration(stored: InternalSoloState): boolean {
+  const raw = stored as InternalSoloState & { schemaVersion?: number };
+  return raw.schemaVersion !== 2
+    || !SoloSettingsSchema.safeParse(raw.settings).success
+    || raw.questionSnapshot.some((question) => !QuestionDifficultySchema.safeParse(
+      (question as ServerQuestion & { difficulty?: unknown }).difficulty,
+    ).success);
+}
+
+export function migrateStoredSoloState(stored: InternalSoloState): InternalSoloState {
+  const rawSettings = stored.settings as SoloSettings & { difficultyPool?: unknown };
+  const parsedSettings = SoloSettingsSchema.safeParse(rawSettings);
+  const legacySettings = parsedSettings.success
+    ? parsedSettings.data
+    : SoloSettingsSchema.parse({
+        ...rawSettings,
+        difficultyPool: [...DEFAULT_DIFFICULTY_POOL],
+      });
+  return {
+    ...stored,
+    schemaVersion: 2,
+    settings: {
+      ...legacySettings,
+      mapPool: [...legacySettings.mapPool],
+      difficultyPool: [...legacySettings.difficultyPool],
+    },
+    questionSnapshot: stored.questionSnapshot.map((question) => {
+      const parsedDifficulty = QuestionDifficultySchema.safeParse(
+        (question as ServerQuestion & { difficulty?: unknown }).difficulty,
+      );
+      return {
+        ...question,
+        difficulty: parsedDifficulty.success ? parsedDifficulty.data : "hard",
+      };
+    }),
+  };
 }
 
 export type SoloActionResult<T = undefined> =
@@ -79,12 +122,16 @@ export function createInitialSoloState({
 }): InternalSoloState {
   if (questions.length < settings.totalRounds) throw new Error("NOT_ENOUGH_QUESTIONS");
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sessionId,
     generation,
     nickname,
     status: "round_preparing",
-    settings: { ...settings, mapPool: [...settings.mapPool] },
+    settings: {
+      ...settings,
+      mapPool: [...settings.mapPool],
+      difficultyPool: [...settings.difficultyPool],
+    },
     round: 1,
     questionCount,
     questionSnapshot: questions.slice(0, settings.totalRounds),
