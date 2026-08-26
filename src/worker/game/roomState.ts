@@ -80,6 +80,23 @@ export function validateMatchStart({
   return null;
 }
 
+export function validateRoomSettingsUpdate({
+  status,
+  requestingPlayerId,
+  hostPlayerId,
+  requesterActive,
+}: {
+  status: RoomStatus;
+  requestingPlayerId: string;
+  hostPlayerId: string | null;
+  requesterActive: boolean;
+}): GameErrorCode | null {
+  if (!requesterActive) return "INVALID_PLAYER";
+  if (status !== "waiting") return "GAME_ALREADY_STARTED";
+  if (requestingPlayerId !== hostPlayerId) return "NOT_HOST";
+  return null;
+}
+
 export interface KickablePlayerState {
   id: string;
   active: boolean;

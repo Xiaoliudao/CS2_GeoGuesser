@@ -16,6 +16,7 @@ import {
   validateGuess,
   validateMatchStart,
   validatePlayerKick,
+  validateRoomSettingsUpdate,
   type GuessValidationInput,
 } from "./roomState";
 
@@ -439,4 +440,26 @@ describe("server-authoritative host kick validation", () => {
     expect(validatePlayerKick({ ...base, status: "finished" })).toBe("KICK_NOT_ALLOWED");
     expect(validatePlayerKick({ ...base, requestingPlayerId: "dnf" })).toBe("INVALID_PLAYER");
   });
+});
+
+describe("server-authoritative waiting-room settings validation", () => {
+  const validRequest = {
+    status: "waiting" as const,
+    requestingPlayerId: "host",
+    hostPlayerId: "host",
+    requesterActive: true,
+  };
+
+  it("allows only the current active host while waiting", () => {
+    expect(validateRoomSettingsUpdate(validRequest)).toBeNull();
+    expect(validateRoomSettingsUpdate({ ...validRequest, requestingPlayerId: "guest" })).toBe("NOT_HOST");
+    expect(validateRoomSettingsUpdate({ ...validRequest, requesterActive: false })).toBe("INVALID_PLAYER");
+  });
+
+  it.each(["round_preparing", "playing", "round_result", "finished"] as const)(
+    "rejects updates after the match enters %s",
+    (status) => {
+      expect(validateRoomSettingsUpdate({ ...validRequest, status })).toBe("GAME_ALREADY_STARTED");
+    },
+  );
 });

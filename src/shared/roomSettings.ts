@@ -23,6 +23,11 @@ export interface RoomSettings {
   serverRegion: ServerRegion;
 }
 
+export type RoomSettingsUpdate = Pick<
+  RoomSettings,
+  "totalRounds" | "roundDurationSeconds" | "mapPool" | "difficultyPool"
+>;
+
 export interface CreateRoomRequest {
   settings: RoomSettings;
   creator: MultiplayerCreator;
@@ -77,6 +82,13 @@ export const RoomSettingsSchema = z.object({
   difficultyPool: DifficultyPoolSchema,
   serverRegion: z.enum(SERVER_REGIONS),
 }).strict();
+
+export const RoomSettingsUpdateSchema = RoomSettingsSchema.pick({
+  totalRounds: true,
+  roundDurationSeconds: true,
+  mapPool: true,
+  difficultyPool: true,
+});
 
 export const CreateRoomRequestSchema = z.object({
   settings: RoomSettingsSchema,
@@ -136,4 +148,14 @@ export function roundDurationMs(settings: Pick<RoomSettings, "roundDurationSecon
 
 export function roundDeadline(roundStartedAt: number, settings: Pick<RoomSettings, "roundDurationSeconds">): number {
   return roundStartedAt + roundDurationMs(settings);
+}
+
+export function sameRoomSettings(left: RoomSettings, right: RoomSettings): boolean {
+  return left.totalRounds === right.totalRounds
+    && left.roundDurationSeconds === right.roundDurationSeconds
+    && left.serverRegion === right.serverRegion
+    && left.mapPool.length === right.mapPool.length
+    && left.mapPool.every((mapId, index) => mapId === right.mapPool[index])
+    && left.difficultyPool.length === right.difficultyPool.length
+    && left.difficultyPool.every((difficulty, index) => difficulty === right.difficultyPool[index]);
 }

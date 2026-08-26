@@ -1,10 +1,12 @@
 import type { MapId, RadarLayerId } from "./maps";
+import type { RoomSettingsUpdate } from "./roomSettings";
 import type { GameErrorCode, GameRoomState, MapPoint, PublicPlayer, RoundResultState } from "./types";
 
 export const CLIENT_EVENTS = {
   JOIN: "player:join",
   LEAVE: "player:leave",
   KICK: "player:kick",
+  UPDATE_SETTINGS: "room:update-settings",
   READY: "player:ready",
   START_MATCH: "game:start",
   GUESS_SUBMIT: "guess:submit",
@@ -37,6 +39,7 @@ export type ClientEvent =
   | { type: "player:join"; payload: { playerId: string; nickname: string } }
   | { type: "player:leave" }
   | { type: "player:kick"; payload: { targetPlayerId: string } }
+  | { type: "room:update-settings"; payload: { settings: RoomSettingsUpdate } }
   | { type: "player:ready" }
   | { type: "game:start" }
   | {

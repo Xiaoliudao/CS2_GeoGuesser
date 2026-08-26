@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ASSET_LOAD_ERROR_REASONS, CLIENT_EVENTS } from "./protocol";
 import { MAP_IDS, isLayerForMap } from "./maps";
 import { multiplayerNicknameSchema, multiplayerPlayerIdSchema } from "./multiplayer";
+import { RoomSettingsUpdateSchema } from "./roomSettings";
 
 export const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{5}$/;
 
@@ -22,6 +23,15 @@ export const clientEventSchema = z.discriminatedUnion("type", [
     type: z.literal(CLIENT_EVENTS.KICK),
     payload: z.object({ targetPlayerId: playerIdSchema }).strict(),
   }).strict(),
+  z.object({
+    type: z.literal(CLIENT_EVENTS.UPDATE_SETTINGS),
+    payload: z.object({ settings: z.unknown() }).strict(),
+  }).strict().superRefine((event, context) => {
+    const result = RoomSettingsUpdateSchema.safeParse(event.payload.settings);
+    if (!result.success && event.payload.settings === undefined) {
+      context.addIssue({ code: "custom", path: ["payload", "settings"], message: "Settings are required." });
+    }
+  }),
   z.object({ type: z.literal(CLIENT_EVENTS.READY) }),
   z.object({ type: z.literal(CLIENT_EVENTS.START_MATCH) }).strict(),
   z.object({

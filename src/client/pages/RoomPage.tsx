@@ -281,6 +281,12 @@ export function RoomPage({ roomCode }: { roomCode: string }) {
           onStart={() => sendEvent({ type: CLIENT_EVENTS.START_MATCH })}
           onKick={requestKick}
           kickingPlayerId={isKicking ? kickTargetId : null}
+          settingsError={error}
+          onClearSettingsError={clearError}
+          onUpdateSettings={(settings) => sendEvent({
+            type: CLIENT_EVENTS.UPDATE_SETTINGS,
+            payload: { settings },
+          })}
         />
       )}
       {room?.status === "round_preparing" && !viewerIsDnf && (

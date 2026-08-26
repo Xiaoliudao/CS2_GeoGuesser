@@ -1,9 +1,13 @@
 import type { GameRoomState } from "../../shared/types";
-import { getMap } from "../../shared/maps";
+import type { GameErrorCode } from "../../shared/types";
 import { MIN_MULTIPLAYER_PLAYERS } from "../../shared/multiplayer";
-import { QUESTION_DIFFICULTIES, QUESTION_DIFFICULTY_LABELS } from "../../shared/questionDifficulty";
+import type { RoomSettingsUpdate } from "../../shared/roomSettings";
 import { InviteRoomButton } from "./InviteRoomButton";
 import { HostKickButton } from "./HostKickButton";
+import { WaitingRoomSettings } from "./WaitingRoomSettings";
+
+const NOOP = () => undefined;
+const REJECT_SETTINGS_UPDATE = () => false;
 
 export function Lobby({
   room,
@@ -12,6 +16,9 @@ export function Lobby({
   onStart,
   onKick,
   kickingPlayerId,
+  onUpdateSettings,
+  settingsError,
+  onClearSettingsError,
 }: {
   room: GameRoomState;
   playerId: string;
@@ -19,6 +26,9 @@ export function Lobby({
   onStart: () => void;
   onKick?: (playerId: string) => void;
   kickingPlayerId?: string | null;
+  onUpdateSettings?: (settings: RoomSettingsUpdate) => boolean;
+  settingsError?: { code: GameErrorCode; message: string } | null;
+  onClearSettingsError?: () => void;
 }) {
   const me = room.players.find((player) => player.id === playerId);
   const activePlayers = room.players
@@ -33,12 +43,6 @@ export function Lobby({
   const canStart = isHost && allPlayersReady && questionsReady;
   const openSlots = Math.max(0, room.maxPlayers - activePlayers.length);
   const unreadyCount = activePlayers.filter((player) => !player.ready || !player.connected).length;
-  const difficultySummary = room.settings.difficultyPool.length === QUESTION_DIFFICULTIES.length
-    ? "ALL"
-    : QUESTION_DIFFICULTIES
-      .filter((difficulty) => room.settings.difficultyPool.includes(difficulty))
-      .map((difficulty) => QUESTION_DIFFICULTY_LABELS[difficulty])
-      .join(" · ");
 
   const waitingMessage = !enoughPlayers
     ? "WAITING FOR AT LEAST ONE MORE PLAYER…"
@@ -53,16 +57,13 @@ export function Lobby({
       <div className="stage-kicker">PRE-MATCH</div>
       <h2>WAITING ROOM</h2>
       <p>{activePlayers.length} / {room.maxPlayers} players · {room.settings.totalRounds} locations · One winner.</p>
-      <div className="lobby-settings" aria-label="Match settings">
-        <div><span>ROUNDS</span><strong>{room.settings.totalRounds}</strong></div>
-        <div><span>ROUND TIME</span><strong>{room.settings.roundDurationSeconds} SEC</strong></div>
-        <div><span>DIFFICULTY</span><strong>{difficultySummary}</strong></div>
-        <div><span>SERVER</span><strong>{room.settings.serverRegion === "asia" ? "ASIA" : "AUTO"}</strong></div>
-        <div className="lobby-map-pool">
-          <span>MAP POOL</span>
-          <strong>{room.settings.mapPool.map((mapId) => getMap(mapId).name).join(" · ")}</strong>
-        </div>
-      </div>
+      <WaitingRoomSettings
+        room={room}
+        playerId={playerId}
+        socketError={settingsError ?? null}
+        onClearSocketError={onClearSettingsError ?? NOOP}
+        onApply={onUpdateSettings ?? REJECT_SETTINGS_UPDATE}
+      />
       <div className="lobby-slots" aria-label="Room players">
         {Array.from({ length: room.maxPlayers }, (_, slot) => {
           const player = playersBySlot.get(slot);

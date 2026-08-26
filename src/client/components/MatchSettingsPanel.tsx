@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { MAPS, type MapId } from "../../shared/maps";
 import {
   QUESTION_DIFFICULTIES,
@@ -35,7 +36,13 @@ interface MatchSettingsPanelProps {
   onDurationChange: (value: string) => void;
   onMapPoolChange: (mapPool: MapId[]) => void;
   onDifficultyPoolChange: (difficultyPool: QuestionDifficulty[]) => void;
-  onServerRegionChange: (region: ServerRegion) => void;
+  onServerRegionChange?: (region: ServerRegion) => void;
+  editable?: boolean;
+  toggleCollapsedLabel?: string;
+  serverRegionReadOnly?: boolean;
+  includeServerRegionInSummary?: boolean;
+  disabled?: boolean;
+  children?: ReactNode;
 }
 
 export function formatMatchSettingsSummary({
@@ -88,6 +95,12 @@ export function MatchSettingsPanel({
   onMapPoolChange,
   onDifficultyPoolChange,
   onServerRegionChange,
+  editable = true,
+  toggleCollapsedLabel = "CUSTOMIZE MATCH",
+  serverRegionReadOnly = false,
+  includeServerRegionInSummary = false,
+  disabled = false,
+  children,
 }: MatchSettingsPanelProps) {
   const selectedRounds = Number(roundsInput);
   const selectedDuration = Number(durationInput);
@@ -104,7 +117,10 @@ export function MatchSettingsPanel({
     || invalidDuration
     || notEnoughQuestions;
   const showCompactNote = hasAvailabilityError || checkingAvailability;
-  const summary = formatMatchSettingsSummary({ roundsInput, durationInput, mapPool, difficultyPool, serverRegion });
+  const formattedSummary = formatMatchSettingsSummary({ roundsInput, durationInput, mapPool, difficultyPool, serverRegion });
+  const summary = includeServerRegionInSummary && serverRegion === "auto"
+    ? `${formattedSummary} · AUTO`
+    : formattedSummary;
   const toggleMap = (mapId: MapId) => {
     onMapPoolChange(
       mapPool.includes(mapId)
@@ -127,10 +143,13 @@ export function MatchSettingsPanel({
             ? <strong>{availabilityError}</strong>
             : notEnoughQuestions
               ? <><strong>ONLY {availableQuestions} QUESTIONS ARE AVAILABLE</strong><span>Requested: {selectedRounds}</span></>
-              : <><strong>{availableQuestions} QUESTIONS AVAILABLE</strong><span>Across {mapPool.length} selected map{mapPool.length === 1 ? "" : "s"} and {difficultyPool.length} difficult{difficultyPool.length === 1 ? "y" : "ies"}</span></>;
+              : <><strong>{availableQuestions} QUESTIONS AVAILABLE</strong><span>Required: {selectedRounds} · Across {mapPool.length} selected map{mapPool.length === 1 ? "" : "s"} and {difficultyPool.length} difficult{difficultyPool.length === 1 ? "y" : "ies"}</span></>;
 
   return (
-    <section className={`match-settings ${expanded ? "is-expanded" : ""}`} aria-labelledby="match-settings-title">
+    <section
+      className={`match-settings ${expanded ? "is-expanded" : ""} ${editable ? "" : "is-read-only"}`}
+      aria-label="Match settings"
+    >
       <div className="match-settings-compact">
         <div className="match-settings-copy">
           <span id="match-settings-title">MATCH SETTINGS</span>
@@ -145,18 +164,21 @@ export function MatchSettingsPanel({
             </div>
           )}
         </div>
-        <button
-          className="match-settings-toggle"
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={MATCH_SETTINGS_DETAILS_ID}
-          onClick={onToggle}
-        >
-          {expanded ? "HIDE SETTINGS" : "CUSTOMIZE MATCH"} <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
-        </button>
+        {editable && (
+          <button
+            className="match-settings-toggle"
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={MATCH_SETTINGS_DETAILS_ID}
+            disabled={disabled}
+            onClick={onToggle}
+          >
+            {expanded ? "HIDE SETTINGS" : toggleCollapsedLabel} <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
+          </button>
+        )}
       </div>
 
-      <div id={MATCH_SETTINGS_DETAILS_ID} className="match-settings-details" hidden={!expanded} tabIndex={-1}>
+      <div id={MATCH_SETTINGS_DETAILS_ID} className="match-settings-details" hidden={!expanded || !editable} tabIndex={-1}>
         <fieldset id={MATCH_SETTINGS_QUESTIONS_ID} className="setting-group" tabIndex={-1}>
           <legend>QUESTIONS</legend>
           <div className="setting-presets">
@@ -165,7 +187,7 @@ export function MatchSettingsPanel({
                 key={rounds}
                 type="button"
                 className={selectedRounds === rounds ? "is-selected" : ""}
-                disabled={checkingAvailability || availability === null || rounds > availableQuestions}
+                disabled={disabled || checkingAvailability || availability === null || rounds > availableQuestions}
                 onClick={() => onRoundsChange(String(rounds))}
               >
                 {rounds}
@@ -186,6 +208,7 @@ export function MatchSettingsPanel({
               aria-label="Custom question count"
               aria-invalid={invalidRounds}
               aria-describedby={MATCH_SETTINGS_AVAILABILITY_ID}
+              disabled={disabled}
             />
           </label>
         </fieldset>
@@ -198,6 +221,7 @@ export function MatchSettingsPanel({
                 key={seconds}
                 type="button"
                 className={selectedDuration === seconds ? "is-selected" : ""}
+                disabled={disabled}
                 onClick={() => onDurationChange(String(seconds))}
               >
                 {seconds}s
@@ -218,6 +242,7 @@ export function MatchSettingsPanel({
               aria-label="Custom round duration in seconds"
               aria-invalid={invalidDuration}
               aria-describedby={MATCH_SETTINGS_AVAILABILITY_ID}
+              disabled={disabled}
             />
           </label>
         </fieldset>
@@ -226,6 +251,7 @@ export function MatchSettingsPanel({
           id={MATCH_SETTINGS_DIFFICULTY_POOL_ID}
           difficultyPool={difficultyPool}
           ariaDescribedBy={MATCH_SETTINGS_AVAILABILITY_ID}
+          disabled={disabled}
           onChange={onDifficultyPoolChange}
         />
 
@@ -241,8 +267,8 @@ export function MatchSettingsPanel({
           <div className="map-pool-toolbar">
             <span id="map-pool-label" className="setting-group-label">MAP POOL</span>
             <div className="map-pool-actions" aria-label="Map pool selection actions">
-              <button type="button" onClick={() => onMapPoolChange(MAPS.map((map) => map.id))}>SELECT ALL</button>
-              <button type="button" onClick={() => onMapPoolChange([])}>CLEAR</button>
+              <button type="button" disabled={disabled} onClick={() => onMapPoolChange(MAPS.map((map) => map.id))}>SELECT ALL</button>
+              <button type="button" disabled={disabled} onClick={() => onMapPoolChange([])}>CLEAR</button>
             </div>
           </div>
           <div className="map-pool-grid">
@@ -254,10 +280,11 @@ export function MatchSettingsPanel({
                   type="button"
                   role="checkbox"
                   aria-checked={selected}
+                  disabled={disabled}
                   className={selected ? "is-selected" : ""}
                   onClick={() => toggleMap(map.id)}
                 >
-                  <span>{map.name}</span><b>{selected ? "✓" : ""}</b>
+                  <span>{map.name}</span><b aria-hidden="true">{selected ? "✓" : ""}</b>
                 </button>
               );
             })}
@@ -266,11 +293,20 @@ export function MatchSettingsPanel({
 
         <fieldset id={MATCH_SETTINGS_REGION_ID} className="setting-group server-region-setting" tabIndex={-1}>
           <legend>SERVER REGION</legend>
-          <div className="setting-presets region-presets">
-            <button type="button" className={serverRegion === "auto" ? "is-selected" : ""} onClick={() => onServerRegionChange("auto")}>AUTO</button>
-            <button type="button" className={serverRegion === "asia" ? "is-selected" : ""} onClick={() => onServerRegionChange("asia")}>ASIA</button>
-          </div>
-          <small>AUTO places new rooms near the first request. ASIA gives first creation a best-effort APAC hint.</small>
+          {serverRegionReadOnly ? (
+            <div className="server-region-readonly" aria-label={`Server region ${serverRegion === "asia" ? "ASIA" : "AUTO"}`}>
+              <strong>{serverRegion === "asia" ? "ASIA" : "AUTO"}</strong>
+              <small>Fixed for this room because its server placement was chosen when the room was created.</small>
+            </div>
+          ) : (
+            <>
+              <div className="setting-presets region-presets">
+                <button type="button" disabled={disabled} className={serverRegion === "auto" ? "is-selected" : ""} onClick={() => onServerRegionChange?.("auto")}>AUTO</button>
+                <button type="button" disabled={disabled} className={serverRegion === "asia" ? "is-selected" : ""} onClick={() => onServerRegionChange?.("asia")}>ASIA</button>
+              </div>
+              <small>AUTO places new rooms near the first request. ASIA gives first creation a best-effort APAC hint.</small>
+            </>
+          )}
         </fieldset>
 
         <div
@@ -282,6 +318,7 @@ export function MatchSettingsPanel({
         >
           {availabilityContent}
         </div>
+        {children}
       </div>
     </section>
   );

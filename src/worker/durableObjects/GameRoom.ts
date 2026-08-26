@@ -10,8 +10,11 @@ import {
 } from "../../shared/multiplayer";
 import {
   RoomSettingsSchema,
+  RoomSettingsUpdateSchema,
   roomSettingsFromStorage,
+  roomSettingsValidationErrorCode,
   roundDurationMs,
+  sameRoomSettings,
   type RoomSettings,
 } from "../../shared/roomSettings";
 import { QuestionDifficultySchema } from "../../shared/questionDifficulty";
@@ -50,6 +53,7 @@ import {
   validateGuess,
   validateMatchStart,
   validatePlayerKick,
+  validateRoomSettingsUpdate,
 } from "../game/roomState";
 import { normalizeScore, scoreGuess } from "../game/scoring";
 import { createPlayingRoundTiming, createPreparingRoundTiming } from "../game/roundTiming";
@@ -472,6 +476,9 @@ export class GameRoom extends DurableObject<Env> {
       case "player:kick":
         await this.kick(socket, player, event.payload.targetPlayerId);
         break;
+      case "room:update-settings":
+        await this.updateRoomSettings(socket, player, event.payload.settings);
+        break;
       case "player:ready":
         await this.togglePlayerReady(player);
         break;
@@ -558,6 +565,90 @@ export class GameRoom extends DurableObject<Env> {
     player.ready = toggledReadyState(player.ready);
     this.logGameEvent("PLAYER_READY_CHANGED", { playerId: player.id, ready: player.ready });
     await this.commit();
+  }
+
+  private async updateRoomSettings(
+    socket: WebSocket,
+    requester: InternalPlayer,
+    rawSettings: unknown,
+  ): Promise<void> {
+    if (!this.state) return;
+    const authorizationError = validateRoomSettingsUpdate({
+      status: this.state.status,
+      requestingPlayerId: requester.id,
+      hostPlayerId: this.state.hostPlayerId,
+      requesterActive: requester.active,
+    });
+    if (authorizationError) {
+      this.sendError(socket, authorizationError, this.errorMessage(authorizationError));
+      return;
+    }
+
+    const update = RoomSettingsUpdateSchema.safeParse(rawSettings);
+    if (!update.success) {
+      const code = roomSettingsValidationErrorCode(update.error);
+      this.sendError(socket, code, this.errorMessage(code));
+      return;
+    }
+    const nextSettings = RoomSettingsSchema.parse({
+      ...update.data,
+      serverRegion: this.state.settings.serverRegion,
+    });
+    if (sameRoomSettings(nextSettings, this.state.settings)) {
+      this.sendState(socket);
+      return;
+    }
+
+    const settingsBeforeAvailabilityCheck = structuredClone(this.state.settings);
+    try {
+      const questionCount = await this.questions().countEnabledForSelection(
+        nextSettings.mapPool,
+        nextSettings.difficultyPool,
+      );
+      if (!this.state) return;
+      const revalidationError = validateRoomSettingsUpdate({
+        status: this.state.status,
+        requestingPlayerId: requester.id,
+        hostPlayerId: this.state.hostPlayerId,
+        requesterActive: this.state.players.some((player) => player.id === requester.id && player.active),
+      });
+      if (revalidationError) {
+        this.sendError(socket, revalidationError, this.errorMessage(revalidationError));
+        return;
+      }
+      if (!sameRoomSettings(this.state.settings, settingsBeforeAvailabilityCheck)) {
+        this.sendError(socket, "ROOM_SETTINGS_CHANGED", this.errorMessage("ROOM_SETTINGS_CHANGED"));
+        return;
+      }
+      if (questionCount < nextSettings.totalRounds) {
+        this.sendError(
+          socket,
+          "NOT_ENOUGH_QUESTIONS",
+          `Only ${questionCount} questions are currently available for the selected maps and difficulties.`,
+        );
+        return;
+      }
+
+      this.state.settings = nextSettings;
+      this.state.questionCount = questionCount;
+      for (const player of this.state.players) player.ready = false;
+      this.logGameEvent("ROOM_SETTINGS_UPDATED", {
+        requestingPlayerId: requester.id,
+        totalRounds: nextSettings.totalRounds,
+        roundDurationSeconds: nextSettings.roundDurationSeconds,
+        mapCount: nextSettings.mapPool.length,
+        difficultyCount: nextSettings.difficultyPool.length,
+        questionCount,
+      });
+      await this.commit();
+    } catch (error) {
+      this.logQuestionDatabaseError("update-room-settings", error);
+      this.sendError(
+        socket,
+        "QUESTION_DATABASE_UNAVAILABLE",
+        "Question database is temporarily unavailable. No settings were changed.",
+      );
+    }
   }
 
   private async leave(socket: WebSocket, player: InternalPlayer): Promise<void> {
@@ -1372,6 +1463,15 @@ export class GameRoom extends DurableObject<Env> {
     if (code === "KICKED_FROM_ROOM") return "You were removed from this room by the host.";
     if (code === "NOT_ENOUGH_PLAYERS") return "At least two active players are required to start.";
     if (code === "PLAYERS_NOT_READY") return "Every active player must be connected and ready before the match starts.";
+    if (code === "GAME_ALREADY_STARTED") return "Match settings can only be changed while the room is waiting.";
+    if (code === "ROOM_SETTINGS_CHANGED") return "The lobby changed while settings were being checked. Review the latest settings and try again.";
+    if (code === "INVALID_ROOM_SETTINGS") return "The match settings payload is invalid.";
+    if (code === "INVALID_ROUND_COUNT") return "Question count must be a whole number from 1 to 50.";
+    if (code === "INVALID_ROUND_DURATION") return "Round time must be a whole number from 10 to 120 seconds.";
+    if (code === "EMPTY_MAP_POOL") return "Select at least one map.";
+    if (code === "INVALID_MAP_ID") return "The map pool contains an invalid or duplicate map.";
+    if (code === "EMPTY_DIFFICULTY_POOL") return "Select at least one difficulty.";
+    if (code === "INVALID_DIFFICULTY") return "The difficulty pool contains an invalid or duplicate difficulty.";
     return code;
   }
 }

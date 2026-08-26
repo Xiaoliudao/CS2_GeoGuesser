@@ -12,11 +12,13 @@ export function DifficultyPoolSelector({
   onChange,
   id = DEFAULT_DIFFICULTY_POOL_SELECTOR_ID,
   ariaDescribedBy,
+  disabled = false,
 }: {
   difficultyPool: QuestionDifficulty[];
   onChange: (difficultyPool: QuestionDifficulty[]) => void;
   id?: string;
   ariaDescribedBy?: string;
+  disabled?: boolean;
 }) {
   const labelId = `${id}-label`;
   const toggleDifficulty = (difficulty: QuestionDifficulty) => {
@@ -50,6 +52,7 @@ export function DifficultyPoolSelector({
               type="button"
               role="checkbox"
               aria-checked={selected}
+              disabled={disabled}
               title={QUESTION_DIFFICULTY_CHINESE_LABELS[difficulty]}
               onClick={() => toggleDifficulty(difficulty)}
             >

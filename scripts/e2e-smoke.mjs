@@ -202,6 +202,68 @@ try {
   await capacityGuests[0].waitForError("NOT_HOST");
   assert(capacityHost.lastState.status === "waiting", "Non-host unexpectedly started the match");
 
+  const editableSettings = {
+    totalRounds: requestedSettings.totalRounds,
+    roundDurationSeconds: 30,
+    mapPool: [...requestedSettings.mapPool].reverse(),
+    difficultyPool: [...requestedSettings.difficultyPool],
+  };
+  capacityGuests[0].lastError = null;
+  capacityGuests[0].send({ type: "room:update-settings", payload: { settings: editableSettings } });
+  await capacityGuests[0].waitForError("NOT_HOST");
+  assert(capacityHost.lastState.settings.roundDurationSeconds === 20, "Non-host changed authoritative settings");
+  assert(capacityHost.lastState.players.every((player) => player.ready), "Rejected non-host update reset ready state");
+
+  capacityHost.lastError = null;
+  capacityHost.send({
+    type: "room:update-settings",
+    payload: { settings: { ...editableSettings, serverRegion: "asia" } },
+  });
+  await capacityHost.waitForError("INVALID_ROOM_SETTINGS");
+  assert(capacityHost.lastState.settings.serverRegion === "auto", "Client-provided server region changed room placement");
+  assert(capacityHost.lastState.players.every((player) => player.ready), "Invalid settings update reset ready state");
+
+  const insufficientEntry = Object.entries(availability.byMap)
+    .filter(([, count]) => count > 0 && count < 50)
+    .sort((left, right) => left[1] - right[1])[0];
+  if (insufficientEntry) {
+    capacityHost.lastError = null;
+    capacityHost.send({
+      type: "room:update-settings",
+      payload: {
+        settings: {
+          totalRounds: insufficientEntry[1] + 1,
+          roundDurationSeconds: 30,
+          mapPool: [insufficientEntry[0]],
+          difficultyPool: ["hard"],
+        },
+      },
+    });
+    await capacityHost.waitForError("NOT_ENOUGH_QUESTIONS");
+    assert(capacityHost.lastState.settings.roundDurationSeconds === 20, "Insufficient update partially mutated settings");
+    assert(capacityHost.lastState.players.every((player) => player.ready), "Insufficient update reset ready state");
+  }
+
+  capacityHost.lastError = null;
+  capacityHost.send({ type: "room:update-settings", payload: { settings: editableSettings } });
+  const hostUpdatedState = await capacityHost.waitFor((state) => (
+    state.status === "waiting"
+      && state.settings.roundDurationSeconds === 30
+      && state.players.every((player) => player.ready === false)
+  ));
+  assert(hostUpdatedState.roomCode === capacityRoomCode, "Settings update recreated or changed the room code");
+  assert(hostUpdatedState.settings.serverRegion === requestedSettings.serverRegion, "Settings update changed fixed server placement");
+  assert(
+    JSON.stringify(hostUpdatedState.settings.mapPool) === JSON.stringify(requestedSettings.mapPool),
+    "Settings update did not normalize map order canonically",
+  );
+  const updatedPreviewResponse = await fetch(`${baseUrl}/api/rooms/${capacityRoomCode}/preview`);
+  const updatedPreview = await updatedPreviewResponse.json();
+  assert(updatedPreview.settings.roundDurationSeconds === 30, "Invite preview did not use updated settings");
+
+  for (const client of [capacityHost, ...capacityGuests, winningContender]) client.send({ type: "player:ready" });
+  await capacityHost.waitFor((state) => state.players.length === 5 && state.players.every((player) => player.ready));
+
   capacityHost.send({ type: "player:leave" });
   await capacityHost.waitForLeft(capacityHostId);
   const hostTransferredState = await capacityGuests[0].waitFor(
@@ -218,12 +280,34 @@ try {
     (client) => client.playerId === hostTransferredState.hostPlayerId,
   );
   assert(transferredHost, "Transferred host has no connected client");
+  transferredHost.send({
+    type: "room:update-settings",
+    payload: { settings: { ...editableSettings, roundDurationSeconds: 45 } },
+  });
+  const transferredHostUpdate = await transferredHost.waitFor((state) => (
+    state.status === "waiting"
+      && state.settings.roundDurationSeconds === 45
+      && state.players.every((player) => player.ready === false)
+  ));
+  assert(transferredHostUpdate.hostPlayerId === transferredHost.playerId, "Transferred host could not update settings");
+  for (const client of remainingCapacityClients) client.send({ type: "player:ready" });
+  await transferredHost.waitFor((state) => state.players.every((player) => player.ready));
   transferredHost.send({ type: "game:start" });
   const observer = remainingCapacityClients.find((client) => client !== transferredHost);
   const activeLeaver = remainingCapacityClients.find((client) => client !== transferredHost && client !== observer);
   assert(observer && activeLeaver, "Active leave smoke test could not select distinct players");
   const preparingBeforeLeave = await observer.waitFor(
     (state) => state.status === "round_preparing" && state.round === 1,
+  );
+  transferredHost.lastError = null;
+  transferredHost.send({
+    type: "room:update-settings",
+    payload: { settings: { ...editableSettings, roundDurationSeconds: 20 } },
+  });
+  await transferredHost.waitForError("GAME_ALREADY_STARTED");
+  assert(
+    transferredHost.lastState.settings.roundDurationSeconds === 45,
+    "Active-match settings update mutated the frozen match configuration",
   );
   activeLeaver.send({ type: "player:leave" });
   await activeLeaver.waitForLeft(activeLeaver.playerId);
@@ -329,6 +413,7 @@ try {
   ));
   assert(kickPlaying.currentQuestion.questionId === kickPreparing.currentQuestion.questionId, "Preparing-phase kick changed the current question");
   assert(kickPlaying.players.filter((player) => player.active).length === 4, "Preparing-phase kick left the wrong active player count");
+  await kickHost.waitForRoundStart(1);
   assert(kickHost.roundStarts.filter((payload) => payload.round === 1).length === 1, "Preparing-phase kick restarted the round timer");
 
   const kickedPreviewResponse = await fetch(`${baseUrl}/api/rooms/${kickRoomCode}/preview`, {
@@ -617,6 +702,11 @@ try {
     anonymousSocketBroadcastIsolationVerified: true,
     intentionalLeaveAcknowledged: true,
     waitingHostTransferVerified: true,
+    waitingRoomSettingsUpdated: true,
+    settingsUpdateResetReady: true,
+    transferredHostSettingsAuthorityVerified: true,
+    activeMatchSettingsLocked: true,
+    updatedInvitePreviewVerified: true,
     activeLeavePreservedQuestion: true,
     twoSurvivorsContinued: true,
     oneSurvivorFinishedCleanly: true,

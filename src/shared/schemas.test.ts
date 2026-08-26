@@ -107,4 +107,23 @@ describe("normalized point validation", () => {
       payload: { targetPlayerId: "8a831d4d-92ef-4db3-86c8-3ac42c988f27", extra: "unsafe" },
     }).success).toBe(false);
   });
+
+  it("accepts the settings-update envelope for whole-object server validation", () => {
+    expect(clientEventSchema.safeParse({
+      type: "room:update-settings",
+      payload: {
+        settings: {
+          totalRounds: 12,
+          roundDurationSeconds: 45,
+          mapPool: ["mirage", "ancient"],
+          difficultyPool: ["easy", "hell"],
+        },
+      },
+    }).success).toBe(true);
+    expect(clientEventSchema.safeParse({ type: "room:update-settings" }).success).toBe(false);
+    expect(clientEventSchema.safeParse({
+      type: "room:update-settings",
+      payload: { settings: undefined },
+    }).success).toBe(false);
+  });
 });

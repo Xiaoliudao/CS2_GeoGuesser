@@ -4,6 +4,7 @@ import {
   CreateRoomRequestSchema,
   QuestionAvailabilityRequestSchema,
   RoomSettingsSchema,
+  RoomSettingsUpdateSchema,
   roomSettingsValidationErrorCode,
   roundDeadline,
   roundDurationMs,
@@ -102,6 +103,27 @@ describe("RoomSettings validation", () => {
     });
     expect(QuestionAvailabilityRequestSchema.safeParse({ mapPool: ["mirage"] }).success).toBe(false);
     expect(QuestionAvailabilityRequestSchema.safeParse({ mapPool: ["mirage"], difficultyPool: [] }).success).toBe(false);
+  });
+
+  it("validates a canonical waiting-room update without accepting server placement", () => {
+    expect(RoomSettingsUpdateSchema.parse({
+      totalRounds: 12,
+      roundDurationSeconds: 45,
+      mapPool: ["overpass", "mirage"],
+      difficultyPool: ["hell", "easy"],
+    })).toEqual({
+      totalRounds: 12,
+      roundDurationSeconds: 45,
+      mapPool: ["mirage", "overpass"],
+      difficultyPool: ["easy", "hell"],
+    });
+    expect(RoomSettingsUpdateSchema.safeParse({
+      totalRounds: 12,
+      roundDurationSeconds: 45,
+      mapPool: ["mirage"],
+      difficultyPool: ["hard"],
+      serverRegion: "asia",
+    }).success).toBe(false);
   });
 
   it("strictly validates creator identity without accepting a host flag", () => {
