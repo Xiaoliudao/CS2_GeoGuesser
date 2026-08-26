@@ -10,6 +10,7 @@ class TestClient {
     this.lastError = null;
     this.roundStarts = [];
     this.lastPong = null;
+    this.leftAcknowledgements = [];
   }
 
   async connect({ waitForJoin = true } = {}) {
@@ -19,6 +20,7 @@ class TestClient {
       if (event.type === "room:state") this.lastState = event.payload;
       if (event.type === "round:start") this.roundStarts.push(event.payload);
       if (event.type === "pong") this.lastPong = event.payload;
+      if (event.type === "player:left") this.leftAcknowledgements.push(event.payload);
       if (event.type === "error") this.lastError = event.payload;
     });
     await new Promise((resolve, reject) => {
@@ -74,6 +76,16 @@ class TestClient {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`${this.name} timed out waiting for a join outcome`);
+  }
+
+  async waitForLeft(playerId, timeoutMs = 8_000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const acknowledgement = this.leftAcknowledgements.find((candidate) => candidate.playerId === playerId);
+      if (acknowledgement) return acknowledgement;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`${this.name} timed out waiting for player:left acknowledgement`);
   }
 
   send(event) {
@@ -173,6 +185,71 @@ try {
   capacityGuests[0].send({ type: "game:start" });
   await capacityGuests[0].waitForError("NOT_HOST");
   assert(capacityHost.lastState.status === "waiting", "Non-host unexpectedly started the match");
+
+  capacityHost.send({ type: "player:leave" });
+  await capacityHost.waitForLeft(capacityHostId);
+  const hostTransferredState = await capacityGuests[0].waitFor(
+    (state) => state.status === "waiting" && state.players.length === 4 && state.hostPlayerId !== capacityHostId,
+  );
+  assert(hostTransferredState.players.every((player) => player.id !== capacityHostId), "Waiting host was not removed immediately");
+  assert(
+    hostTransferredState.players.some((player) => player.id === hostTransferredState.hostPlayerId),
+    "Waiting host transfer did not select a remaining player",
+  );
+
+  const remainingCapacityClients = [...capacityGuests, winningContender];
+  const transferredHost = remainingCapacityClients.find(
+    (client) => client.playerId === hostTransferredState.hostPlayerId,
+  );
+  assert(transferredHost, "Transferred host has no connected client");
+  transferredHost.send({ type: "game:start" });
+  const observer = remainingCapacityClients.find((client) => client !== transferredHost);
+  const activeLeaver = remainingCapacityClients.find((client) => client !== transferredHost && client !== observer);
+  assert(observer && activeLeaver, "Active leave smoke test could not select distinct players");
+  const preparingBeforeLeave = await observer.waitFor(
+    (state) => state.status === "round_preparing" && state.round === 1,
+  );
+  activeLeaver.send({ type: "player:leave" });
+  await activeLeaver.waitForLeft(activeLeaver.playerId);
+  const preparingAfterLeave = await observer.waitFor(
+    (state) => state.status === "round_preparing"
+      && state.players.find((player) => player.id === activeLeaver.playerId)?.active === false,
+  );
+  assert(
+    preparingAfterLeave.players.filter((player) => player.active).length === 3,
+    "Active leave did not retain the expected three survivors",
+  );
+  assert(
+    preparingAfterLeave.currentQuestion.questionId === preparingBeforeLeave.currentQuestion.questionId
+      && preparingAfterLeave.prepareDeadline === preparingBeforeLeave.prepareDeadline,
+    "Active leave restarted or invalidated the current question",
+  );
+  const secondActiveLeaver = remainingCapacityClients.find((client) => (
+    client !== observer
+      && preparingAfterLeave.players.find((player) => player.id === client.playerId)?.active === true
+  ));
+  assert(secondActiveLeaver, "Could not select a second active leaver");
+  secondActiveLeaver.send({ type: "player:leave" });
+  await secondActiveLeaver.waitForLeft(secondActiveLeaver.playerId);
+  const twoPlayersRemain = await observer.waitFor(
+    (state) => state.status === "round_preparing" && state.players.filter((player) => player.active).length === 2,
+  );
+  assert(
+    twoPlayersRemain.currentQuestion.questionId === preparingBeforeLeave.currentQuestion.questionId,
+    "Two remaining players did not continue the current question",
+  );
+  const finalActiveLeaver = remainingCapacityClients.find((client) => (
+    client !== observer
+      && client !== secondActiveLeaver
+      && twoPlayersRemain.players.find((player) => player.id === client.playerId)?.active === true
+  ));
+  assert(finalActiveLeaver, "Could not select the final active leaver");
+  finalActiveLeaver.send({ type: "player:leave" });
+  await finalActiveLeaver.waitForLeft(finalActiveLeaver.playerId);
+  const insufficientPlayersResult = await observer.waitFor(
+    (state) => state.status === "finished" && state.players.filter((player) => player.active).length === 1,
+  );
+  assert(insufficientPlayersResult.currentQuestion, "Insufficient-player finish corrupted the current question state");
 } finally {
   capacityHost.close();
   for (const client of [...capacityGuests, ...slotFiveContenders]) client.close();
@@ -409,6 +486,11 @@ try {
     concurrentSixthPlayerRejected: true,
     creatorHostAndStableSlotsVerified: true,
     anonymousSocketBroadcastIsolationVerified: true,
+    intentionalLeaveAcknowledged: true,
+    waitingHostTransferVerified: true,
+    activeLeavePreservedQuestion: true,
+    twoSurvivorsContinued: true,
+    oneSurvivorFinishedCleanly: true,
   }, null, 2));
   }
 } finally {

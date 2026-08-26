@@ -3,6 +3,7 @@ import type { GameErrorCode, GameRoomState, MapPoint, PublicPlayer, RoundResultS
 
 export const CLIENT_EVENTS = {
   JOIN: "player:join",
+  LEAVE: "player:leave",
   READY: "player:ready",
   START_MATCH: "game:start",
   GUESS_SUBMIT: "guess:submit",
@@ -32,6 +33,7 @@ export type AssetLoadErrorReason = (typeof ASSET_LOAD_ERROR_REASONS)[number];
 
 export type ClientEvent =
   | { type: "player:join"; payload: { playerId: string; nickname: string } }
+  | { type: "player:leave" }
   | { type: "player:ready" }
   | { type: "game:start" }
   | {

@@ -10,6 +10,13 @@ interface SocketError {
   message: string;
 }
 
+interface PendingLeave {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeoutId: number;
+}
+
 export function useGameSocket(roomCode: string, playerId: string, nickname: string) {
   const [room, setRoom] = useState<GameRoomState | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -24,6 +31,10 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
   const reconnectAttemptRef = useRef(0);
   const stateVersionRef = useRef(0);
   const stoppedRef = useRef(false);
+  const pendingLeaveRef = useRef<PendingLeave | null>(null);
+  const leaveIntentRef = useRef(false);
+  const leaveConfirmedRef = useRef(false);
+  const [leaveConfirmed, setLeaveConfirmed] = useState(false);
 
   const send = useCallback((event: ClientEvent): boolean => {
     const socket = socketRef.current;
@@ -35,8 +46,56 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
     return true;
   }, []);
 
+  const leaveRoom = useCallback((): Promise<void> => {
+    if (leaveConfirmedRef.current) return Promise.resolve();
+    const pending = pendingLeaveRef.current;
+    if (pending) return pending.promise;
+
+    const socket = socketRef.current;
+    if ((!socket || socket.readyState !== WebSocket.OPEN) && !leaveIntentRef.current) {
+      const message = "Connection lost before the room could be left. Please try again.";
+      return Promise.reject(new Error(message));
+    }
+
+    let resolvePromise!: () => void;
+    let rejectPromise!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+    const timeoutId = window.setTimeout(() => {
+      if (pendingLeaveRef.current?.promise !== promise) return;
+      pendingLeaveRef.current = null;
+      const message = "The server did not confirm that you left the room. Please try again.";
+      rejectPromise(new Error(message));
+    }, 5_000);
+    pendingLeaveRef.current = {
+      promise,
+      resolve: resolvePromise,
+      reject: rejectPromise,
+      timeoutId,
+    };
+    leaveIntentRef.current = true;
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify({ type: "player:leave" } satisfies ClientEvent));
+      } catch {
+        window.clearTimeout(timeoutId);
+        pendingLeaveRef.current = null;
+        leaveIntentRef.current = false;
+        const message = "The leave request could not be sent. Please try again.";
+        rejectPromise(new Error(message));
+      }
+    }
+    return promise;
+  }, []);
+
   useEffect(() => {
     stoppedRef.current = false;
+    leaveIntentRef.current = false;
+    leaveConfirmedRef.current = false;
+    setLeaveConfirmed(false);
     stateVersionRef.current = 0;
     reconnectAttemptRef.current = 0;
     roomRef.current = null;
@@ -59,16 +118,51 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    const confirmIntentionalLeave = (socket?: WebSocket) => {
+      if (leaveConfirmedRef.current) return;
+      leaveConfirmedRef.current = true;
+      leaveIntentRef.current = false;
+      stoppedRef.current = true;
+      if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      setConnection("disconnected");
+      const pending = pendingLeaveRef.current;
+      if (pending) {
+        window.clearTimeout(pending.timeoutId);
+        pendingLeaveRef.current = null;
+        pending.resolve();
+      }
+      setLeaveConfirmed(true);
+      if (socket && socket.readyState < WebSocket.CLOSING) {
+        socket.close(1000, "Intentional leave confirmed");
+      }
+    };
+
     const connect = async () => {
       if (stoppedRef.current) return;
       setConnection(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
       try {
-        const roomResponse = await fetch(`/api/rooms/${roomCode}`);
+        const checkingLeave = leaveIntentRef.current;
+        const roomResponse = await fetch(
+          checkingLeave ? `/api/rooms/${roomCode}/preview` : `/api/rooms/${roomCode}`,
+          checkingLeave ? { headers: { "x-cs2-player-id": playerId } } : undefined,
+        );
         if (roomResponse.status === 404) {
+          if (checkingLeave) {
+            confirmIntentionalLeave();
+            return;
+          }
           stoppedRef.current = true;
           setConnection("disconnected");
           setError({ code: "ROOM_NOT_FOUND", message: "This room does not exist." });
           return;
+        }
+        if (checkingLeave && roomResponse.ok) {
+          const preview = await roomResponse.json().catch(() => null) as { reconnectable?: unknown } | null;
+          if (preview?.reconnectable === false) {
+            confirmIntentionalLeave();
+            return;
+          }
         }
       } catch {
         // A WebSocket attempt below provides the normal reconnect behavior.
@@ -83,9 +177,11 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
         reconnectAttemptRef.current = 0;
         setConnection("connected");
         setError(null);
-        socket.send(
-          JSON.stringify({ type: "player:join", payload: { playerId, nickname } } satisfies ClientEvent),
-        );
+        socket.send(JSON.stringify({ type: "player:join", payload: { playerId, nickname } } satisfies ClientEvent));
+        if (leaveIntentRef.current) {
+          socket.send(JSON.stringify({ type: "player:leave" } satisfies ClientEvent));
+          return;
+        }
         socket.send(JSON.stringify({ type: "room:sync" } satisfies ClientEvent));
         sendClockPing();
         pingTimer = window.setInterval(sendClockPing, 15_000);
@@ -147,6 +243,10 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
           }
           return;
         }
+        if (event.type === "player:left" && event.payload.playerId === playerId) {
+          confirmIntentionalLeave(socket);
+          return;
+        }
         if (event.type === "pong") {
           const clientReceivedAt = Date.now();
           const estimate = clockEstimatorRef.current.addSample(
@@ -173,12 +273,18 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
           }
           return;
         }
-        if (event.type === "error") setError(event.payload);
+        if (event.type === "error") {
+          if (!leaveIntentRef.current) setError(event.payload);
+        }
       });
 
       socket.addEventListener("close", (closeEvent) => {
         if (pingTimer !== null) window.clearInterval(pingTimer);
         if (socketRef.current === socket) socketRef.current = null;
+        if (closeEvent.code === 4001) {
+          confirmIntentionalLeave();
+          return;
+        }
         if (stoppedRef.current) return;
         if (closeEvent.code === 4002 || closeEvent.code === 4003) {
           setConnection("disconnected");
@@ -203,6 +309,13 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
       stoppedRef.current = true;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+      const pending = pendingLeaveRef.current;
+      if (pending) {
+        window.clearTimeout(pending.timeoutId);
+        pendingLeaveRef.current = null;
+        pending.reject(new Error("The leave request was interrupted."));
+      }
+      leaveIntentRef.current = false;
       socketRef.current?.close(1000, "Leaving room");
       socketRef.current = null;
     };
@@ -217,5 +330,7 @@ export function useGameSocket(roomCode: string, playerId: string, nickname: stri
     error,
     clearError: () => setError(null),
     send,
+    leaveRoom,
+    leaveConfirmed,
   };
 }

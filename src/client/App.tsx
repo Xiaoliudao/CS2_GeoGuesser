@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { HomePage } from "./pages/HomePage";
 import { InviteJoinPage } from "./pages/InviteJoinPage";
 import { RoomPage } from "./pages/RoomPage";
@@ -26,16 +26,75 @@ function currentPath(): string {
   return window.location.pathname;
 }
 
-export function navigate(path: string): void {
-  window.history.pushState({}, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
+function currentRoute(): string {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+export interface NavigationAttempt {
+  path: string;
+  source: "push" | "pop";
+}
+
+export type NavigationBlocker = (attempt: NavigationAttempt) => boolean;
+
+export interface NavigateOptions {
+  bypassBlocker?: boolean;
+  replace?: boolean;
+}
+
+let navigationBlocker: NavigationBlocker | null = null;
+const syntheticNavigationEvents = new WeakSet<Event>();
+
+export function registerNavigationBlocker(blocker: NavigationBlocker): () => void {
+  navigationBlocker = blocker;
+  return () => {
+    if (navigationBlocker === blocker) navigationBlocker = null;
+  };
+}
+
+function normalizedRoute(path: string): string {
+  const url = new URL(path, window.location.href);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export function navigate(path: string, options: NavigateOptions = {}): boolean {
+  const nextPath = normalizedRoute(path);
+  if (!options.bypassBlocker && navigationBlocker?.({ path: nextPath, source: "push" })) {
+    return false;
+  }
+
+  const historyMethod = options.replace ? "replaceState" : "pushState";
+  window.history[historyMethod]({}, "", path);
+  const navigationEvent = new PopStateEvent("popstate", { state: window.history.state });
+  syntheticNavigationEvents.add(navigationEvent);
+  window.dispatchEvent(navigationEvent);
+  return true;
 }
 
 export function App() {
   const [path, setPath] = useState(currentPath);
+  const committedRouteRef = useRef(currentRoute());
+  const committedHistoryStateRef = useRef<unknown>(window.history.state);
 
   useEffect(() => {
-    const handleNavigation = () => setPath(currentPath());
+    const handleNavigation = (event: PopStateEvent) => {
+      const nextPath = currentRoute();
+      if (
+        !syntheticNavigationEvents.has(event)
+        && navigationBlocker?.({ path: nextPath, source: "pop" })
+      ) {
+        window.history.pushState(
+          committedHistoryStateRef.current,
+          "",
+          committedRouteRef.current,
+        );
+        return;
+      }
+
+      committedRouteRef.current = nextPath;
+      committedHistoryStateRef.current = window.history.state;
+      setPath(currentPath());
+    };
     window.addEventListener("popstate", handleNavigation);
     return () => window.removeEventListener("popstate", handleNavigation);
   }, []);

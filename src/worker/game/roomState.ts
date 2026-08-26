@@ -110,6 +110,97 @@ export function selectHostPlayerId<T extends {
   return candidates[0]?.id ?? null;
 }
 
+export interface DepartablePlayer {
+  id: string;
+  joinedAt: number;
+  slotIndex: number;
+  active: boolean;
+  connected: boolean;
+  ready: boolean;
+  disconnectExpiresAt: number | null;
+}
+
+export interface PlayerDepartureInput<T extends DepartablePlayer> {
+  status: RoomStatus;
+  players: readonly T[];
+  hostPlayerId: string | null;
+  inactivePlayerIds: readonly string[];
+  playerId: string;
+}
+
+export interface PlayerDepartureResult<T extends DepartablePlayer> {
+  players: T[];
+  hostPlayerId: string | null;
+  inactivePlayerIds: string[];
+  changed: boolean;
+}
+
+function samePlayerIdOrder(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((playerId, index) => playerId === right[index]);
+}
+
+export function applyPlayerDeparture<T extends DepartablePlayer>({
+  status,
+  players,
+  hostPlayerId,
+  inactivePlayerIds,
+  playerId,
+}: PlayerDepartureInput<T>): PlayerDepartureResult<T> {
+  const departingPlayer = players.find((player) => player.id === playerId);
+  if (!departingPlayer) {
+    return {
+      players: [...players],
+      hostPlayerId,
+      inactivePlayerIds: [...inactivePlayerIds],
+      changed: false,
+    };
+  }
+
+  if (status === "waiting") {
+    const nextPlayers = players.filter((player) => player.id !== playerId);
+    const nextInactivePlayerIds = Array.from(new Set(inactivePlayerIds.filter((id) => id !== playerId)));
+    const hostRemainsActive = nextPlayers.some((player) => player.id === hostPlayerId && player.active);
+    return {
+      players: nextPlayers,
+      hostPlayerId: hostRemainsActive ? hostPlayerId : selectHostPlayerId(nextPlayers),
+      inactivePlayerIds: nextInactivePlayerIds,
+      changed: true,
+    };
+  }
+
+  const playerAlreadyInactive = !departingPlayer.active
+    && !departingPlayer.connected
+    && !departingPlayer.ready
+    && departingPlayer.disconnectExpiresAt === null;
+  const nextPlayers = playerAlreadyInactive
+    ? [...players]
+    : players.map((player) => player.id === playerId
+      ? {
+          ...player,
+          active: false,
+          connected: false,
+          ready: false,
+          disconnectExpiresAt: null,
+        }
+      : player);
+  const nextInactivePlayerIds = Array.from(new Set([...inactivePlayerIds, playerId]));
+  const hostRemainsActive = nextPlayers.some((player) => player.id === hostPlayerId && player.active);
+  const nextHostPlayerId = hostRemainsActive ? hostPlayerId : selectHostPlayerId(nextPlayers);
+  const inactivePlayerIdsChanged = !samePlayerIdOrder(inactivePlayerIds, nextInactivePlayerIds);
+
+  return {
+    players: nextPlayers,
+    hostPlayerId: nextHostPlayerId,
+    inactivePlayerIds: nextInactivePlayerIds,
+    changed: !playerAlreadyInactive || inactivePlayerIdsChanged || nextHostPlayerId !== hostPlayerId,
+  };
+}
+
+export function shouldFinishMatchAfterDeparture(status: RoomStatus, activePlayerCount: number): boolean {
+  const matchIsLive = status === "round_preparing" || status === "playing" || status === "round_result";
+  return matchIsLive && activePlayerCount < MIN_MULTIPLAYER_PLAYERS;
+}
+
 export function activeMatchPlayerIds(
   matchPlayerIds: readonly string[],
   inactivePlayerIds: readonly string[],

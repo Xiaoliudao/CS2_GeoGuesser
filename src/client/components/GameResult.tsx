@@ -6,11 +6,13 @@ export function GameResult({
   playerId,
   onPlayAgain,
   onLeave,
+  isLeaving = false,
 }: {
   room: GameRoomState;
   playerId: string;
   onPlayAgain: () => void;
   onLeave: () => void;
+  isLeaving?: boolean;
 }) {
   if (room.failureCode === "NETWORK_ASSET_FAILURE") {
     return (
@@ -19,8 +21,10 @@ export function GameResult({
         <h2>NETWORK ASSET FAILURE</h2>
         <p>No player received free points. Start a new attempt when all connections are stable.</p>
         <div className="final-actions">
-          <button className="primary-button" onClick={onPlayAgain}>TRY AGAIN</button>
-          <button className="secondary-button" onClick={onLeave}>LEAVE ROOM</button>
+          <button className="primary-button" onClick={onPlayAgain} disabled={isLeaving}>TRY AGAIN</button>
+          <button className="secondary-button" onClick={onLeave} disabled={isLeaving}>
+            {isLeaving ? "LEAVING…" : "LEAVE MATCH"}
+          </button>
         </div>
       </section>
     );
@@ -35,6 +39,7 @@ export function GameResult({
   const tied = winners.length > 1;
   const viewerWon = winnerIds.has(playerId);
   const winnerNames = winners.map((player) => player.nickname).join(" · ");
+  const fullyCompleted = room.round >= room.settings.totalRounds;
   return (
     <section className="stage-card final-card">
       <div className="stage-kicker">MATCH COMPLETE</div>
@@ -62,8 +67,10 @@ export function GameResult({
         })}
       </div>
       <div className="final-actions">
-        <button className="primary-button" onClick={onPlayAgain}>PLAY AGAIN</button>
-        <button className="secondary-button" onClick={onLeave}>LEAVE ROOM</button>
+        <button className="primary-button" onClick={onPlayAgain} disabled={isLeaving}>PLAY AGAIN</button>
+        <button className="secondary-button" onClick={onLeave} disabled={isLeaving}>
+          {isLeaving ? "LEAVING…" : fullyCompleted ? "BACK TO HOME" : "LEAVE MATCH"}
+        </button>
       </div>
     </section>
   );

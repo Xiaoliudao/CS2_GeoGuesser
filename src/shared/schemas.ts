@@ -17,6 +17,7 @@ export const clientEventSchema = z.discriminatedUnion("type", [
       nickname: nicknameSchema,
     }),
   }),
+  z.object({ type: z.literal(CLIENT_EVENTS.LEAVE) }).strict(),
   z.object({ type: z.literal(CLIENT_EVENTS.READY) }),
   z.object({ type: z.literal(CLIENT_EVENTS.START_MATCH) }).strict(),
   z.object({

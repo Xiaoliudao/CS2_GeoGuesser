@@ -84,4 +84,12 @@ describe("normalized point validation", () => {
     expect(clientEventSchema.safeParse({ type: "game:start" }).success).toBe(true);
     expect(clientEventSchema.safeParse({ type: "game:start", payload: { host: true } }).success).toBe(false);
   });
+
+  it("accepts only a payload-free intentional leave request", () => {
+    expect(clientEventSchema.safeParse({ type: "player:leave" }).success).toBe(true);
+    expect(clientEventSchema.safeParse({
+      type: "player:leave",
+      payload: { playerId: "8a831d4d-92ef-4db3-86c8-3ac42c988f27" },
+    }).success).toBe(false);
+  });
 });

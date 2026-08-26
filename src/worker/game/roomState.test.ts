@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeStateAfterReconnect,
   activeMatchPlayerIds,
+  applyPlayerDeparture,
   allActivePlayersSubmitted,
   allLobbyPlayersReady,
   canReceiveRoomBroadcast,
@@ -9,12 +10,44 @@ import {
   lowestAvailableSlotIndex,
   scoreVisibleToViewer,
   selectHostPlayerId,
+  shouldFinishMatchAfterDeparture,
   shouldRetainForRematch,
   toggledReadyState,
   validateGuess,
   validateMatchStart,
   type GuessValidationInput,
 } from "./roomState";
+
+interface DeparturePlayer {
+  id: string;
+  nickname: string;
+  joinedAt: number;
+  slotIndex: number;
+  active: boolean;
+  connected: boolean;
+  ready: boolean;
+  score: number;
+  disconnectExpiresAt: number | null;
+}
+
+function departurePlayer(
+  id: string,
+  slotIndex: number,
+  overrides: Partial<DeparturePlayer> = {},
+): DeparturePlayer {
+  return {
+    id,
+    nickname: id.toUpperCase(),
+    joinedAt: slotIndex * 10,
+    slotIndex,
+    active: true,
+    connected: true,
+    ready: true,
+    score: 100 + slotIndex,
+    disconnectExpiresAt: 30_000,
+    ...overrides,
+  };
+}
 
 const valid: GuessValidationInput = {
   playerExists: true,
@@ -220,5 +253,152 @@ describe("lobby readiness", () => {
     expect(shouldRetainForRematch({ connected: false, disconnectExpiresAt: 1_001 }, 1_000)).toBe(true);
     expect(shouldRetainForRematch({ connected: false, disconnectExpiresAt: 1_000 }, 1_000)).toBe(false);
     expect(shouldRetainForRematch({ connected: false, disconnectExpiresAt: null }, 1_000)).toBe(false);
+  });
+});
+
+describe("authoritative player departure", () => {
+  it("removes a waiting host immediately and transfers host deterministically", () => {
+    const players = [
+      departurePlayer("host", 0, { joinedAt: 0 }),
+      departurePlayer("later-slot", 1, { joinedAt: 20 }),
+      departurePlayer("earlier-slot", 2, { joinedAt: 10 }),
+    ];
+
+    const result = applyPlayerDeparture({
+      status: "waiting",
+      players,
+      hostPlayerId: "host",
+      inactivePlayerIds: ["host", "host"],
+      playerId: "host",
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.players.map((player) => player.id)).toEqual(["later-slot", "earlier-slot"]);
+    expect(result.hostPlayerId).toBe("earlier-slot");
+    expect(result.inactivePlayerIds).toEqual([]);
+  });
+
+  it("preserves an active host when a different waiting player leaves", () => {
+    const result = applyPlayerDeparture({
+      status: "waiting",
+      players: [departurePlayer("host", 0), departurePlayer("guest", 1)],
+      hostPlayerId: "host",
+      inactivePlayerIds: [],
+      playerId: "guest",
+    });
+
+    expect(result.hostPlayerId).toBe("host");
+    expect(result.players.map((player) => player.id)).toEqual(["host"]);
+  });
+
+  it("retains an active-match player's identity and score while marking them DNF", () => {
+    const host = departurePlayer("host", 0, { score: 417 });
+    const guest = departurePlayer("guest", 1, { score: 293 });
+    const result = applyPlayerDeparture({
+      status: "playing",
+      players: [host, guest],
+      hostPlayerId: "host",
+      inactivePlayerIds: ["legacy-dnf", "legacy-dnf"],
+      playerId: "host",
+    });
+    const departed = result.players.find((player) => player.id === "host");
+
+    expect(result.changed).toBe(true);
+    expect(departed).toMatchObject({
+      id: "host",
+      nickname: "HOST",
+      slotIndex: 0,
+      joinedAt: 0,
+      score: 417,
+      active: false,
+      connected: false,
+      ready: false,
+      disconnectExpiresAt: null,
+    });
+    expect(result.inactivePlayerIds).toEqual(["legacy-dnf", "host"]);
+    expect(result.hostPlayerId).toBe("guest");
+  });
+
+  it("is idempotent after the same active-match player has already departed", () => {
+    const initial = applyPlayerDeparture({
+      status: "round_preparing",
+      players: [departurePlayer("host", 0), departurePlayer("guest", 1)],
+      hostPlayerId: "host",
+      inactivePlayerIds: [],
+      playerId: "guest",
+    });
+    const repeated = applyPlayerDeparture({
+      status: "round_preparing",
+      players: initial.players,
+      hostPlayerId: initial.hostPlayerId,
+      inactivePlayerIds: initial.inactivePlayerIds,
+      playerId: "guest",
+    });
+
+    expect(initial.changed).toBe(true);
+    expect(repeated.changed).toBe(false);
+    expect(repeated).toMatchObject({
+      players: initial.players,
+      hostPlayerId: "host",
+      inactivePlayerIds: ["guest"],
+    });
+  });
+
+  it("is a no-op for a player that is no longer in the authoritative room state", () => {
+    const players = [departurePlayer("host", 0)];
+    const result = applyPlayerDeparture({
+      status: "waiting",
+      players,
+      hostPlayerId: "host",
+      inactivePlayerIds: [],
+      playerId: "missing",
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result).toMatchObject({ players, hostPlayerId: "host", inactivePlayerIds: [] });
+  });
+
+  it("continues with two survivors but finishes a live match with only one", () => {
+    const threePlayerDeparture = applyPlayerDeparture({
+      status: "playing",
+      players: [departurePlayer("p1", 0), departurePlayer("p2", 1), departurePlayer("p3", 2)],
+      hostPlayerId: "p1",
+      inactivePlayerIds: [],
+      playerId: "p3",
+    });
+    const twoSurvivors = activeMatchPlayerIds(
+      ["p1", "p2", "p3"],
+      threePlayerDeparture.inactivePlayerIds,
+    );
+    expect(twoSurvivors).toEqual(["p1", "p2"]);
+    expect(shouldFinishMatchAfterDeparture("playing", twoSurvivors.length)).toBe(false);
+
+    const twoPlayerDeparture = applyPlayerDeparture({
+      status: "playing",
+      players: [departurePlayer("p1", 0), departurePlayer("p2", 1)],
+      hostPlayerId: "p1",
+      inactivePlayerIds: [],
+      playerId: "p2",
+    });
+    const oneSurvivor = activeMatchPlayerIds(["p1", "p2"], twoPlayerDeparture.inactivePlayerIds);
+    expect(oneSurvivor).toEqual(["p1"]);
+    expect(shouldFinishMatchAfterDeparture("playing", oneSurvivor.length)).toBe(true);
+  });
+
+  it.each(["round_preparing", "playing", "round_result"] as const)(
+    "finishes %s below the multiplayer minimum",
+    (status) => {
+      expect(shouldFinishMatchAfterDeparture(status, 0)).toBe(true);
+      expect(shouldFinishMatchAfterDeparture(status, 1)).toBe(true);
+      expect(shouldFinishMatchAfterDeparture(status, 2)).toBe(false);
+      expect(shouldFinishMatchAfterDeparture(status, 5)).toBe(false);
+    },
+  );
+
+  it("does not finish waiting or already-finished rooms based on active match count", () => {
+    expect(shouldFinishMatchAfterDeparture("waiting", 0)).toBe(false);
+    expect(shouldFinishMatchAfterDeparture("waiting", 1)).toBe(false);
+    expect(shouldFinishMatchAfterDeparture("finished", 0)).toBe(false);
+    expect(shouldFinishMatchAfterDeparture("finished", 1)).toBe(false);
   });
 });

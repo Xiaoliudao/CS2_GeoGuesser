@@ -66,4 +66,20 @@ describe("GameResult multiplayer ranking", () => {
     expect(screen.getAllByText("#1")).toHaveLength(3);
     expect(screen.getByText("DNF")).toBeTruthy();
   });
+
+  it("uses a non-destructive home action after a fully completed match", () => {
+    render(<GameResult room={finishedRoom([100, 80])} playerId="player-0" onPlayAgain={vi.fn()} onLeave={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "BACK TO HOME" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "LEAVE MATCH" })).toBeNull();
+  });
+
+  it("keeps early authoritative finishes as a match leave action", () => {
+    const room = finishedRoom([100, 80]);
+    room.round = room.settings.totalRounds - 1;
+    render(<GameResult room={room} playerId="player-0" onPlayAgain={vi.fn()} onLeave={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "LEAVE MATCH" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "BACK TO HOME" })).toBeNull();
+  });
 });

@@ -37,12 +37,13 @@ import {
 import {
   activeStateAfterReconnect,
   activeMatchPlayerIds,
+  applyPlayerDeparture,
   allActivePlayersSubmitted,
   canReceiveRoomBroadcast,
-  expiredPlayerDisposition,
   lowestAvailableSlotIndex,
   scoreVisibleToViewer,
   selectHostPlayerId,
+  shouldFinishMatchAfterDeparture,
   shouldRetainForRematch,
   toggledReadyState,
   validateGuess,
@@ -446,6 +447,9 @@ export class GameRoom extends DurableObject<Env> {
       case "room:sync":
         this.sendState(socket);
         break;
+      case "player:leave":
+        await this.leave(socket, player);
+        break;
       case "player:ready":
         await this.togglePlayerReady(player);
         break;
@@ -523,6 +527,54 @@ export class GameRoom extends DurableObject<Env> {
     player.ready = toggledReadyState(player.ready);
     this.logGameEvent("PLAYER_READY_CHANGED", { playerId: player.id, ready: player.ready });
     await this.commit();
+  }
+
+  private async leave(socket: WebSocket, player: InternalPlayer): Promise<void> {
+    if (!this.state) return;
+    const playerId = player.id;
+    const playerSockets = this.ctx.getWebSockets().filter(
+      (candidate) => this.getAttachment(candidate).playerId === playerId,
+    );
+    if (!playerSockets.includes(socket)) playerSockets.push(socket);
+    const previousState = structuredClone(this.state);
+
+    try {
+      const departure = applyPlayerDeparture({
+        status: this.state.status,
+        players: this.state.players,
+        hostPlayerId: this.state.hostPlayerId,
+        inactivePlayerIds: this.state.inactivePlayerIds,
+        playerId,
+      });
+      this.state.players = departure.players;
+      this.state.hostPlayerId = departure.hostPlayerId;
+      this.state.inactivePlayerIds = departure.inactivePlayerIds;
+      delete this.state.assetReady[playerId];
+      if (departure.changed) {
+        this.logGameEvent("PLAYER_LEFT_INTENTIONALLY", { playerId, status: this.state.status });
+        await this.reconcileAndCommit(Date.now(), true);
+      }
+    } catch (error) {
+      this.state = previousState;
+      throw error;
+    }
+
+    for (const candidate of playerSockets) {
+      candidate.serializeAttachment({ playerId: null, nickname: null } satisfies SocketAttachment);
+    }
+
+    const acknowledgement: ServerEvent = {
+      type: "player:left",
+      payload: { playerId, stateVersion: this.state.stateVersion },
+    };
+    for (const candidate of playerSockets) {
+      this.send(candidate, acknowledgement);
+      try {
+        candidate.close(4001, "Intentional leave confirmed");
+      } catch {
+        // The client may close immediately after receiving the acknowledgement.
+      }
+    }
   }
 
   private async startMatch(socket: WebSocket, player: InternalPlayer): Promise<void> {
@@ -914,9 +966,9 @@ export class GameRoom extends DurableObject<Env> {
     this.state.failureCode = null;
   }
 
-  private async reconcileAndCommit(now: number): Promise<void> {
+  private async reconcileAndCommit(now: number, stateAlreadyChanged = false): Promise<void> {
     if (!this.state) return;
-    let changed = false;
+    let changed = stateAlreadyChanged;
     let preparedRound = false;
     let startedRound = false;
     let assetFailure = false;
@@ -925,27 +977,24 @@ export class GameRoom extends DurableObject<Env> {
       .filter((player) => !player.connected && player.disconnectExpiresAt !== null && now >= player.disconnectExpiresAt)
       .map((player) => player.id);
     if (expiredPlayerIds.length > 0) {
-      const expired = new Set(expiredPlayerIds);
-      if (expiredPlayerDisposition(this.state.status) === "remove") {
-        this.state.players = this.state.players.filter((player) => !expired.has(player.id));
-      } else {
-        for (const player of this.state.players) {
-          if (!expired.has(player.id)) continue;
-          player.active = false;
-          player.ready = false;
-          player.disconnectExpiresAt = null;
-          if (!this.state.inactivePlayerIds.includes(player.id)) this.state.inactivePlayerIds.push(player.id);
-        }
+      for (const playerId of expiredPlayerIds) {
+        const departure = applyPlayerDeparture({
+          status: this.state.status,
+          players: this.state.players,
+          hostPlayerId: this.state.hostPlayerId,
+          inactivePlayerIds: this.state.inactivePlayerIds,
+          playerId,
+        });
+        this.state.players = departure.players;
+        this.state.hostPlayerId = departure.hostPlayerId;
+        this.state.inactivePlayerIds = departure.inactivePlayerIds;
+        delete this.state.assetReady[playerId];
+        changed = changed || departure.changed;
       }
-      const hostPlayerId = this.state.hostPlayerId;
-      if (!this.state.players.some((player) => player.id === hostPlayerId && player.active)) {
-        this.state.hostPlayerId = selectHostPlayerId(this.state.players);
-      }
-      changed = true;
     }
 
     const activePlayerIds = this.activeMatchPlayerIds();
-    if (this.state.status === "round_preparing" && activePlayerIds.length === 0) {
+    if (shouldFinishMatchAfterDeparture(this.state.status, activePlayerIds.length)) {
       this.finishGame();
       changed = true;
     } else if (
